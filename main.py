@@ -1,7 +1,7 @@
 
 
 # TODO: if I made this a class that stores the possibles and board I wouldn't have to pass everything around so much
-def solve(board: list[list]):
+def solve(board: list[list], expected: list[list]):
     # start with any number possible in any cell and filter down
     row_possible = [[i for i in range(1, 10)] for _ in range(1, 10)]
     col_possible = [[i for i in range(1, 10)] for _ in range(1, 10)]
@@ -18,30 +18,53 @@ def solve(board: list[list]):
         changed = False
 
         if check_intersections(row_possible, col_possible, board):
-            update_possibilities(row_possible, col_possible, cell_possible, board)
+            update_possibilities(row_possible, col_possible, cell_possible, board, expected)
             changed = True
 
         pretty_print(board)
 
         if check_known(row_possible, col_possible, board):
-            update_possibilities(row_possible, col_possible, cell_possible, board)
+            update_possibilities(row_possible, col_possible, cell_possible, board, expected)
             changed = True
 
         pretty_print(board)
 
         # Can't repeat a number within a 3x3 section, so filter the possibilities
         if attempt_section(row_possible, col_possible, cell_possible, board):
-            update_possibilities(row_possible, col_possible, cell_possible, board)
+            update_possibilities(row_possible, col_possible, cell_possible, board, expected)
             changed = True
 
     pretty_print(board)
     print_stats(row_possible, col_possible)
 
 
-def update_possibilities(row_possible, col_possible, cell_possible, board):
+def update_possibilities(row_possible, col_possible, cell_possible, board, expected=None):
+    if expected is not None:
+        sanity_check(board, expected)
+
+    # the board itself is the primary source of truth. Everything else is just for convenience
     update_rows_and_columns_from_board(row_possible, col_possible, board)
-    update_cells_from_rows_and_columns(cell_possible, row_possible, col_possible)
-    update_rows_and_columns_from_cells(row_possible, col_possible, cell_possible)
+    update_cell_possibilities(cell_possible, row_possible, col_possible, board)
+    update_row_column_possibilities(row_possible, col_possible, cell_possible)
+
+    assert_consistency(row_possible, col_possible, cell_possible, board)
+
+
+def sanity_check(board, expected):
+    for r in range(8):
+        for c in range(8):
+            if board[r][c] is not None and board[r][c] != expected[r][c]:
+                print("Square at ", (r, c), "is wrong. Expected", expected[r][c], "but was", "board[r][c]")
+
+
+def assert_consistency(row_possible, col_possible, cell_possible, board):
+    for r in range(8):
+        for c in range(8):
+            if board[r][c] is not None:
+                assert(board[r][c] not in row_possible)
+                assert(board[r][c] not in col_possible)
+                assert(board[r][c] not in cell_possible)
+                assert(len(cell_possible[r][c]) == 1)
 
 
 def update_rows_and_columns_from_board(row_possible, col_possible, board):
@@ -56,25 +79,36 @@ def update_rows_and_columns_from_board(row_possible, col_possible, board):
                 col_possible[c].remove(cell_value)
 
 
-def update_rows_and_columns_from_cells(row_possible, col_possible, cell_possible):
+def update_row_column_possibilities(row_possible, col_possible, cell_possible):
     for r in range(9):
         possible_from_cells = set()
+        # what is possible for the row is the union of what is avaible in every cell
         for c in range(9):
-            possible_from_cells.update(cell_possible[r][c])
+            # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
+            if len(cell_possible[r][c]) != 1:
+                possible_from_cells.update(cell_possible[r][c])
         row_possible[r] = list(possible_from_cells.intersection(row_possible[r]))
 
     for c in range(9):
         possible_from_cells = set()
         for r in range(9):
-            possible_from_cells.update(cell_possible[r][c])
+            # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
+            if len(cell_possible[r][c]) != 1:
+                possible_from_cells.update(cell_possible[r][c])
         col_possible[c] = list(possible_from_cells.intersection(col_possible[c]))
 
 
-def update_cells_from_rows_and_columns(cell_possible, row_possible, col_possible):
+def update_cell_possibilities(cell_possible, row_possible, col_possible, board):
     for r in range(9):
         for c in range(9):
-            # TODO: the possibility list should probably all be sets
-            cell_possible[r][c] = list(set(row_possible[r]).union(col_possible[c]).intersection(set(cell_possible[r][c])))
+            if board[r][c] is None:
+                # TODO: the possibility list should probably all be sets to avoid copyinng the data
+                cell_possible[r][c] = list(
+                    set(row_possible[r])
+                    .union(col_possible[c])
+                    .intersection(set(cell_possible[r][c])))
+            else:
+                cell_possible[r][c] = [board[r][c]]
 
 
 def init_row_possibilities(board):
@@ -132,14 +166,14 @@ def attempt_range(row_possible, col_possible, cell_possible, board, start_row, e
     for r in range(start_row, end_row):
         for c in range(start_col, end_col):
             for val in values_in_section:
+                # anything in the same section is not possible for this cell
                 if val in cell_possible[r][c]:
                     cell_possible[r][c].remove(val)
+
                     if len(cell_possible[r][c]) == 0:
                         changed = True
-                        # if this space is already solved, there is bug somewhere
-                        if board[r][c] is not None:
-                            print("stop")
-                        assert(board[r][c] is None)
+                        # if there are no more possibiliites, yet this cell has not been solved, there is a bug
+                        assert(board[r][c] is not None)
                         board[r][c] = val
 
     return changed
@@ -157,15 +191,12 @@ def check_intersections(row_possible, col_possible, board) -> bool:
             if board[r][c] is not None:
                 continue
 
-            # TODO: I think this is where it's failing. Maybe I need to collect all the changes and remove them all at the end
-            #   so that it doesn't whittle away everything
             intersection = [v for v in row_possible[r] if v in col_possible[c]]
             # if this happens, something is invalid
             assert(len(intersection) != 0)
             if len(intersection) == 1:
+                # the board is the source of truth and we will update the possibility lists from here
                 board[r][c] = intersection[0]
-                row_possible[r].remove(intersection[0])
-                col_possible[c].remove(intersection[0])
                 changed = True
     return changed
 
@@ -219,8 +250,17 @@ def main():
          [2, 5, 6, 3, x, 4, 8, 9, x],
          [5, 9, x, x, x, 7, 1, x, 2],
          [1, x, 2, x, 8, x, 4, 7, x],
-         [x, x, 4, 9, 1, x, x, 3, 8]
-         ]
+         [x, x, 4, 9, 1, x, x, 3, 8]],
+
+        [[4, 2, 7, 8, 6, 5, 9, 1, 3],
+         [9, 1, 5, 2, 4, 3, 6, 8, 7],
+         [6, 8, 3, 7, 9, 1, 2, 5, 4],
+         [8, 7, 1, 6, 2, 9, 3, 4, 5],
+         [3, 4, 9, 1, 5, 8, 7, 2, 6],
+         [2, 5, 6, 3, 7, 4, 8, 9, 1],
+         [5, 9, 8, 4, 3, 7, 1, 6, 2],
+         [1, 3, 2, 5, 8, 6, 4, 7, 9],
+         [7, 6, 4, 9, 1, 2, 5, 3, 8]]
     )
 
 # Press the green button in the gutter to run the script.
