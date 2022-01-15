@@ -87,6 +87,7 @@ def update_row_column_possibilities(row_possible, col_possible, cell_possible):
             # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
             if len(cell_possible[r][c]) != 1:
                 possible_from_cells.update(cell_possible[r][c])
+        # TODO: the problem is that when cell_possible[r][c] is 1, we remove it from row_possible, and then it uses the fact that it's not possible later on to make an assumption
         row_possible[r] = list(possible_from_cells.intersection(row_possible[r]))
 
     for c in range(9):
@@ -107,6 +108,10 @@ def update_cell_possibilities(cell_possible, row_possible, col_possible, board):
                     set(row_possible[r])
                     .union(col_possible[c])
                     .intersection(set(cell_possible[r][c])))
+
+                if len(cell_possible[r][c]) == 1:
+                    print("should have solved ", (r, c))
+                    assert(False is True)
             else:
                 cell_possible[r][c] = [board[r][c]]
 
@@ -169,12 +174,13 @@ def attempt_range(row_possible, col_possible, cell_possible, board, start_row, e
                 # anything in the same section is not possible for this cell
                 if val in cell_possible[r][c]:
                     cell_possible[r][c].remove(val)
+                    if len(cell_possible) == 1:
+                        board[r][c] = val
 
                     if len(cell_possible[r][c]) == 0:
                         changed = True
                         # if there are no more possibiliites, yet this cell has not been solved, there is a bug
                         assert(board[r][c] is not None)
-                        board[r][c] = val
 
     return changed
 
@@ -192,8 +198,6 @@ def check_intersections(row_possible, col_possible, board) -> bool:
                 continue
 
             intersection = [v for v in row_possible[r] if v in col_possible[c]]
-            # if this happens, something is invalid
-            assert(len(intersection) != 0)
             if len(intersection) == 1:
                 # the board is the source of truth and we will update the possibility lists from here
                 board[r][c] = intersection[0]
@@ -262,6 +266,7 @@ def main():
          [1, 3, 2, 5, 8, 6, 4, 7, 9],
          [7, 6, 4, 9, 1, 2, 5, 3, 8]]
     )
+
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
