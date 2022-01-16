@@ -6,32 +6,14 @@ class Solver(object):
         self.board = board
         self.expected_solution = expected_solution
 
-        # start with any number possible in any cell and filter down
-        self.row_possible = [[i for i in range(1, 10)] for _ in range(1, 10)]
-        self.col_possible = [[i for i in range(1, 10)] for _ in range(1, 10)]
+        # This gives the remaining choices for cells in a row. When this is empty the row is solved.
+        self.row_remaining = [[i for i in range(1, 10)] for _ in range(1, 10)]
+
+        # This gives the remaining choices for cells in a column. When this is empty the column is solved.
+        self.col_remaining = [[i for i in range(1, 10)] for _ in range(1, 10)]
 
         # cell_possibles[row][col] gives the possible values for each cell
         self.cell_possible = [[[i for i in range(1, 10)] for _ in range(1, 10)] for _ in range(1, 10)]
-
-    def init_row_possibilities(self):
-        possible_by_row = [[i for i in range(1, 10)] for _ in range(1, 10)]
-        for r in range(9):
-            row = self.board[r]
-            for c in range(9):
-                cell_value = row[c]
-                if cell_value in possible_by_row[r]:
-                    possible_by_row[r].remove(cell_value)
-        return possible_by_row
-
-    def init_col_possibilities(self):
-        possible_by_col = [[i for i in range(1, 10)] for _ in range(1, 10)]
-        for c in range(9):
-            col = self.board[c]
-            for r in range(9):
-                cell_value = col[r]
-                if cell_value in possible_by_col[c]:
-                    possible_by_col[c].remove(cell_value)
-        return possible_by_col
 
     def solve(self):
         start_time = time.time()
@@ -60,7 +42,7 @@ class Solver(object):
                 changed = True
 
         end_time = time.time()
-        self.pretty_print()
+        BoardPrinter(self.board).pretty_print()
         self.print_stats(num_iterations, end_time - start_time)
 
     def update_possibilities(self):
@@ -75,8 +57,8 @@ class Solver(object):
         for r in range(8):
             for c in range(8):
                 if self.board[r][c] is not None:
-                    assert(self.board[r][c] not in self.row_possible)
-                    assert(self.board[r][c] not in self.col_possible)
+                    assert(self.board[r][c] not in self.row_remaining)
+                    assert(self.board[r][c] not in self.col_remaining)
                     assert(self.board[r][c] not in self.cell_possible)
                     assert(len(self.cell_possible[r][c]) == 1)
 
@@ -88,10 +70,10 @@ class Solver(object):
             for c in range(9):
                 cell_value = self.board[r][c]
 
-                if cell_value in self.row_possible[r]:
+                if cell_value in self.row_remaining[r]:
                     self.remove_row_possibility(r, cell_value)
 
-                if cell_value in self.col_possible[c]:
+                if cell_value in self.col_remaining[c]:
                     self.remove_col_possibility(c, cell_value)
 
     def update_row_column_possibilities(self):
@@ -102,9 +84,9 @@ class Solver(object):
                 # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
                 if len(self.cell_possible[r][c]) != 1:
                     possible_from_cells.update(self.cell_possible[r][c])
-            # TODO: the problem is that when cell_possible[r][c] is 1, we remove it from row_possible, and then it uses
+            # TODO: the problem is that when cell_possible[r][c] is 1, we remove it from row_remaining, and then it uses
             #       the fact that it's not possible later on in the intersection calculation
-            self.row_possible[r] = list(possible_from_cells.intersection(self.row_possible[r]))
+            self.row_remaining[r] = list(possible_from_cells.intersection(self.row_remaining[r]))
 
         for c in range(9):
             possible_from_cells = set()
@@ -112,7 +94,7 @@ class Solver(object):
                 # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
                 if len(self.cell_possible[r][c]) != 1:
                     possible_from_cells.update(self.cell_possible[r][c])
-            self.col_possible[c] = list(possible_from_cells.intersection(self.col_possible[c]))
+            self.col_remaining[c] = list(possible_from_cells.intersection(self.col_remaining[c]))
 
     def update_cell_possibilities(self):
         for r in range(9):
@@ -120,8 +102,8 @@ class Solver(object):
                 if self.board[r][c] is None:
                     # TODO: the possibility list should probably all be sets to avoid copyinng the data
                     self.cell_possible[r][c] = list(
-                        set(self.row_possible[r])
-                        .union(self.col_possible[c])
+                        set(self.row_remaining[r])
+                        .union(self.col_remaining[c])
                         .intersection(set(self.cell_possible[r][c])))
 
                     if len(self.cell_possible[r][c]) == 1:
@@ -134,31 +116,31 @@ class Solver(object):
             assert(value == self.expected_solution[row][column])
 
         self.board[row][column] = value
-        if value in self.row_possible:
-            self.row_possible.remove(value)
-        if value in self.col_possible:
-            self.col_possible.remove(value)
+        if value in self.row_remaining:
+            self.row_remaining.remove(value)
+        if value in self.col_remaining:
+            self.col_remaining.remove(value)
         self.cell_possible[row][column] = [value]
 
     def remove_row_possibility(self, row, value):
-        if value in self.row_possible[row]:
-            self.row_possible[row].remove(value)
+        if value in self.row_remaining[row]:
+            self.row_remaining[row].remove(value)
 
-            if len(self.row_possible[row]) == 1:
+            if len(self.row_remaining[row]) == 1:
                 # We can solve a cell. Find which column it is.
                 for col in range(8):
                     if self.board[row][col] is None:
-                        self.update_board(row, col, self.row_possible[row][0])
+                        self.update_board(row, col, self.row_remaining[row][0])
 
     def remove_col_possibility(self, col, value):
-        if value in self.col_possible[col]:
-            self.col_possible[col].remove(value)
+        if value in self.col_remaining[col]:
+            self.col_remaining[col].remove(value)
 
-            if len(self.col_possible[col]) == 1:
+            if len(self.col_remaining[col]) == 1:
                 # We can solve a cell. Find which row it is.
                 for row in range(8):
                     if self.board[row][col] is None:
-                        self.update_board(row, col, self.col_possible[col][0])
+                        self.update_board(row, col, self.col_remaining[col][0])
 
     def attempt_section(self):
         changed = False
@@ -217,7 +199,7 @@ class Solver(object):
                 if self.board[r][c] is not None:
                     continue
 
-                intersection = [v for v in self.row_possible[r] if v in self.col_possible[c]]
+                intersection = [v for v in self.row_remaining[r] if v in self.col_remaining[c]]
                 if len(intersection) == 1:
                     self.update_board(r, c, intersection[0])
                     changed = True
@@ -225,7 +207,7 @@ class Solver(object):
 
     def check_known(self):
         changed = False
-        for r_num, row_vals in enumerate(self.row_possible):
+        for r_num, row_vals in enumerate(self.row_remaining):
             # if there is only one possibility for the row, we can fill it in
             if len(row_vals) == 1:
                 new_val = row_vals[0]
@@ -234,7 +216,7 @@ class Solver(object):
                 self.board[r_num][unknowns[0]] = new_val
                 changed = True
 
-        for c_num, col_vals in enumerate(self.col_possible):
+        for c_num, col_vals in enumerate(self.col_remaining):
             # if there is only one possibility for the column, we can fill it in
             if len(col_vals) == 1:
                 new_val = col_vals[0]
@@ -245,9 +227,15 @@ class Solver(object):
 
         return changed
 
-    def print_stats(self, num_iterations, millis):
+    @staticmethod
+    def print_stats(num_iterations, millis):
         print("Solved in", num_iterations, "iterations")
         print("Took", round(millis, 4), "milliseconds")
+
+
+class BoardPrinter(object):
+    def __init__(self, board: list[list[int]]):
+        self.board = board
 
     def pretty_print(self):
         for i, row in enumerate(self.board):
@@ -266,6 +254,7 @@ class Solver(object):
             if (i + 1) % 3 == 0 and i < len(row) - 1:
                 characters.append(' ')
         return ' '.join(characters)
+
 
 def main():
     x = None
