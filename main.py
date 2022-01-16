@@ -1,3 +1,6 @@
+import time
+
+
 class Solver(object):
     def __init__(self, board, expected_solution=None):
         self.board = board
@@ -31,33 +34,34 @@ class Solver(object):
         return possible_by_col
 
     def solve(self):
+        start_time = time.time()
+
         self.update_possibilities()
 
         # Apply a series of filters until we can't get anymore. After that we have to start guessing and seeing
         # where it goes.
         changed = True
+        num_iterations = 0
         while changed:
+            num_iterations += 1
             changed = False
 
             if self.check_intersections():
                 self.update_possibilities()
                 changed = True
 
-            self.pretty_print()
-
             if self.check_known():
                 self.update_possibilities()
                 changed = True
-
-            self.pretty_print()
 
             # Can't repeat a number within a 3x3 section, so filter the possibilities
             if self.attempt_section():
                 self.update_possibilities()
                 changed = True
 
+        end_time = time.time()
         self.pretty_print()
-        self.print_stats()
+        self.print_stats(num_iterations, end_time - start_time)
 
     def update_possibilities(self):
         # the board itself is the primary source of truth. Everything else is just for convenience
@@ -241,12 +245,9 @@ class Solver(object):
 
         return changed
 
-    def print_stats(self):
-        for i, r in enumerate(self.row_possible):
-            print("row :", i, r)
-
-        for i, c in enumerate(self.col_possible):
-            print("col: ", i, c)
+    def print_stats(self, num_iterations, millis):
+        print("Solved in", num_iterations, "iterations")
+        print("Took", round(millis, 4), "milliseconds")
 
     def pretty_print(self):
         for row in self.board:
