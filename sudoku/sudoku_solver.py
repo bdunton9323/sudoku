@@ -1,7 +1,20 @@
 import time
+from copy import deepcopy
 from exceptions import ConstraintViolationError
 from utils import assert_constraint
 
+
+# class SolverState(object):
+#     def __init__(self, board, cell_possible, row_remaining, col_remaining):
+#         self.board = board
+#         self.cell_possible = cell_possible
+#         self.row_remaining = row_remaining
+#         self.col_remaining = col_remaining
+#
+#     def copy(self):
+#         return SolverState(
+#             self.board.copy(), self.cell_possible.copy(), self.row_remaining.copy(), self.col_remaining.copy())
+#
 
 class Solver(object):
     def __init__(self, board, expected_solution=None):
@@ -30,47 +43,54 @@ class Solver(object):
             self.print_success_stats(stats.num_iterations, end_time - start_time)
         else:
             self.print_failure_stats(stats.num_iterations, end_time - start_time)
+            print(stats.get_guesses())
 
     def solve_internal(self, stats_tracker) -> bool:
-
         # Using what is known, get as many cells as possible using the game constraints.
         try:
             self.update_possibilities()
             stats_tracker.num_iterations += self.iteratively_solve()
+            if self.is_solved():
+                return True
         except ConstraintViolationError as e:
-            print(e.message)
+            #print(e.message)
             return False
 
-        if self.is_solved():
-            return True
-        else:
-            cells_to_solve = self.rank_cells_by_easiness()
-            for cell in cells_to_solve:
-                row = cell[0]
-                col = cell[1]
+        for row in range(8):
+            for col in range(8):
+                # scan to the first unsolved space
+                if self.board[row][col] is not None:
+                    continue
+
+                before_guess_board = deepcopy(self.board)
+                before_guess_row = deepcopy(self.row_remaining)
+                before_guess_col = deepcopy(self.col_remaining)
+                before_guess_cell = deepcopy(self.cell_possible)
 
                 for guess in self.cell_possible[row][col]:
+                    this_guess_board = deepcopy(self.board)
+                    this_guess_row = deepcopy(self.row_remaining)
+                    this_guess_col = deepcopy(self.col_remaining)
+                    this_guess_cell = deepcopy(self.cell_possible)
 
-                    # TODO: if the state were encapsulated in an object this would be easier
-                    # remember the old state so we can go back
-                    old_board = self.board.copy()
-                    old_row_remaining = self.row_remaining.copy()
-                    old_col_remaining = self.col_remaining.copy()
-                    old_cell_possible = self.cell_possible.copy()
+                    stats_tracker.add_guess(row, col, guess)
 
-                    # Try this guess, and if it leads to a violation, undo it
+                    # if this guess was invalid from the start, then move on
                     try:
                         self.update_board(row, col, guess)
                     except ConstraintViolationError as e:
                         print(f"Tried setting {row, col} to {guess} but it led to a violation: {e.message}")
-                        self.rewind(old_board, old_row_remaining, old_col_remaining, old_cell_possible)
-                        continue
+                        self.rewind(this_guess_board, this_guess_row, this_guess_col, this_guess_cell)
 
+                    # if this guess did not eventually lead to a correct solution
                     if not self.solve_internal(stats_tracker):
-                        print(f"Tried setting {row, col} to {guess} but it led to a violation")
-                        self.rewind(old_board, old_row_remaining, old_col_remaining, old_cell_possible)
-                    else:
-                        break
+                        self.rewind(this_guess_board, this_guess_row, this_guess_col, this_guess_cell)
+
+                # if none of the guesses worked
+                if not self.is_solved():
+                    self.rewind(before_guess_board, before_guess_row, before_guess_col, before_guess_cell)
+                    return False
+
         return True
 
     def rewind(self, board, row_remaining, col_remaining, cell_possible):
@@ -98,17 +118,18 @@ class Solver(object):
             if self.attempt_section():
                 self.update_possibilities()
                 changed = True
+
         return num_iterations
 
     def rank_cells_by_easiness(self) -> list[(int, int)]:
         # num_guesses -> (row, col)
         ranked_cells = {}
 
-        for r in range(8):
-            for c in range(8):
+        for r in range(9):
+            for c in range(9):
                 num_possible = len(self.cell_possible[r][c])
                 # Don't take solved cells into account
-                if num_possible != 0:
+                if num_possible != 1:
                     if num_possible not in ranked_cells:
                         ranked_cells[num_possible] = []
                     ranked_cells[num_possible].append((r, c))
@@ -129,25 +150,85 @@ class Solver(object):
         self.assert_consistency()
 
     def assert_consistency(self):
-        for r in range(8):
-            for c in range(8):
-                assert_constraint(len(self.cell_possible[r][c]) != 0, f"Cell {r, c} has no more possibilities")
+        for r in range(9):
+            for c in range(9):
+                assert_constraint(len(self.cell_possible[r][c]) != 0, f"No possible values for cell {r, c}")
                 if self.board[r][c] is not None:
                     assert_constraint(self.board[r][c] not in self.row_remaining, f"Solved cell still assignable in row {r}")
                     assert_constraint(self.board[r][c] not in self.col_remaining, f"Solved cell still assignable in column {c}")
                     assert_constraint(self.board[r][c] == self.cell_possible[r][c][0], f"Solved cell {r, c} marked impossible")
-                    assert_constraint(len(self.cell_possible[r][c]) == 1, f"Cell {r, c} was solved but has possibilities: {self.cell_possible[r][c]}")
+                    assert_constraint(len(self.cell_possible[r][c]) == 1, f"Cell {r, c} was solved but still has possibilities: {self.cell_possible[r][c]}")
 
                     if self.expected_solution is not None:
                         expected = self.expected_solution[r][c]
                         actual = self.board[r][c]
                         assert_constraint(actual == expected, f"Cell {r, c} has value of {actual} did not match expected value {expected}")
 
+                if len(self.cell_possible[r][c]) == 1:
+                    # if there are no more possibiliites, yet this cell has not been solved, there is a bug
+                    assert_constraint(
+                        self.board[r][c] is not None,
+                        f"Cell {r, c} has no more possible values but wasn't marked on the board")
+
+        # no two values in the same column:
+        self.check_rows()
+
+        # no two values in the same row:
+        self.check_columns()
+
+        # no two values in the same section
+        # TODO: this can be a loop
+        self.check_section(0, 3, 0, 3)
+        self.check_section(0, 3, 3, 6)
+        self.check_section(0, 3, 6, 9)
+
+        self.check_section(3, 6, 0, 3)
+        self.check_section(3, 6, 3, 6)
+        self.check_section(3, 6, 6, 9)
+
+        self.check_section(6, 9, 0, 3)
+        self.check_section(6, 9, 3, 6)
+        self.check_section(6, 9, 6, 9)
+
+    def check_rows(self):
+        for r in range(9):
+            row_values = set()
+            for c in range(9):
+                value = self.board[r][c]
+                if value:
+                    assert_constraint(value not in row_values, f"Cell {r, c} value {value} is duplicatedd in row")
+                    row_values.add(value)
+
+    def check_columns(self):
+        for c in range(9):
+            col_values = set()
+            for r in range(9):
+                value = self.board[r][c]
+                if value:
+                    assert_constraint(self.board[r][c] not in col_values, f"Cell {r, c} is duplicated in column")
+                    col_values.add(value)
+
+    def check_section(self, start_row, end_row, start_col, end_col):
+        nums_in_section = set()
+        for r in range(start_row, end_row):
+            for c in range(start_col, end_col):
+                assert_constraint(
+                    self.board[r][c] not in nums_in_section,
+                    f"Duplicate value {self.board[r][c]} in section {(start_row, end_row), (start_col, end_col)}")
+                if self.board[r][c] is not None:
+                    nums_in_section.add(self.board[r][c])
+
     def is_solved(self):
         for row in self.board:
             for cell in row:
                 if not cell:
                     return False
+
+        try:
+            self.assert_consistency()
+        except ConstraintViolationError:
+            return False
+
         return True
 
     def update_rows_and_columns_from_solved_cells(self):
@@ -211,7 +292,7 @@ class Solver(object):
 
             if len(self.row_remaining[row]) == 1:
                 # We can solve a cell. Find which column it is.
-                for col in range(8):
+                for col in range(9):
                     if self.board[row][col] is None:
                         self.update_board(row, col, self.row_remaining[row][0])
 
@@ -221,7 +302,7 @@ class Solver(object):
 
             if len(self.col_remaining[col]) == 1:
                 # We can solve a cell. Find which row it is.
-                for row in range(8):
+                for row in range(9):
                     if self.board[row][col] is None:
                         self.update_board(row, col, self.col_remaining[col][0])
 
@@ -258,15 +339,11 @@ class Solver(object):
             for c in range(start_col, end_col):
                 for val in values_in_section:
                     # anything in the same section is not possible for this cell
-                    if val in self.cell_possible[r][c]:
+                    if val in self.cell_possible[r][c] and len(self.cell_possible[r][c]) != 1:
                         self.cell_possible[r][c].remove(val)
                         if len(self.cell_possible) == 1:
                             self.update_board(r, c, val)
                             changed = True
-
-                        if len(self.cell_possible[r][c]) == 0:
-                            # if there are no more possibiliites, yet this cell has not been solved, there is a bug
-                            assert_constraint(self.board[r][c] is not None, "Cell {r, c} has no more possible values but wasn't marked on the board")
 
         return changed
 
@@ -294,22 +371,22 @@ class Solver(object):
             # if there is only one possibility for the row, we can fill it in
             if len(row_vals) == 1:
                 new_val = row_vals[0]
-                unknowns = [i for i, v in enumerate(self.board[r_num]) if v is None]
+                unknown_cols = [i for i, v in enumerate(self.board[r_num]) if v is None]
                 assert_constraint(
-                    len(unknowns) == 1,
-                    "The only possibility for the row was {new_val} but there were {len(unknowns)} left on the board")
-                self.board[r_num][unknowns[0]] = new_val
+                    len(unknown_cols) == 1,
+                    f"The only possibility for the row was {new_val} but there were {len(unknown_cols)} left on the board")
+                self.update_board(r_num, unknown_cols[0], new_val)
                 changed = True
 
         for c_num, col_vals in enumerate(self.col_remaining):
             # if there is only one possibility for the column, we can fill it in
             if len(col_vals) == 1:
                 new_val = col_vals[0]
-                unknowns = [i for i, row in enumerate(self.board) if row[c_num] is None]
+                unknown_rows = [i for i, row in enumerate(self.board) if row[c_num] is None]
                 assert_constraint(
-                    len(unknowns) == 1,
-                    "The only possibility for the colum was {new_val} but there were {len(unknowns)} left on the board")
-                self.board[unknowns[0]][c_num] = new_val
+                    len(unknown_rows) == 1,
+                    f"The only possibility for the colum was {new_val} but there were {len(unknown_rows)} left on the board")
+                self.update_board(unknown_rows[0], c_num, new_val)
                 changed = True
 
         return changed
@@ -352,6 +429,7 @@ class StatsTracker(object):
     def __init__(self):
         self.num_iterations = None
         self.num_guesses = 0
+        self.guesses = [[[] for _ in range(1, 10)] for _ in range(1, 10)]
 
     @property
     def num_iterations(self):
@@ -368,6 +446,12 @@ class StatsTracker(object):
     @num_guesses.setter
     def num_guesses(self, val):
         self._num_iterations = val
+
+    def add_guess(self, row, col, guess):
+        self.guesses[row][col].append(guess)
+
+    def get_guesses(self):
+        return self.guesses
 
 
 def main():
@@ -406,15 +490,16 @@ def main():
          [x, x, x, x, 8, x, x, 2, 6],
          [8, x, x, 2, x, 6, 3, 4, x]],
 
-        [[9, 1, 5, 4, 3, 2, 6, 8, 7],
-         [6, 8, 3, 9, 1, 7, 2, 5, 4],
-         [4, 2, 7, 6, 5, 8, 9, 1, 3],
-         [5, 9, 8, 3, 7, 4, 1, 6, 2],
-         [1, 3, 2, 8, 6, 5, 4, 7, 9],
-         [7, 6, 4, 1, 2, 9, 5, 3, 8],
-         [2, 5, 6, 7, 4, 3, 8, 9, 1],
-         [3, 4, 9, 5, 8, 1, 7, 2, 6],
-         [8, 7, 1, 2, 9, 6, 3, 4, 5]]
+        None
+        # [[9, 1, 5, 4, 3, 2, 6, 8, 7],
+        #  [6, 8, 3, 9, 1, 7, 2, 5, 4],
+        #  [4, 2, 7, 6, 5, 8, 9, 1, 3],
+        #  [5, 9, 8, 3, 7, 4, 1, 6, 2],
+        #  [1, 3, 2, 8, 6, 5, 4, 7, 9],
+        #  [7, 6, 4, 1, 2, 9, 5, 3, 8],
+        #  [2, 5, 6, 7, 4, 3, 8, 9, 1],
+        #  [3, 4, 9, 5, 8, 1, 7, 2, 6],
+        #  [8, 7, 1, 2, 9, 6, 3, 4, 5]]
     )
     solver.solve()
 
