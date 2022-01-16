@@ -43,7 +43,11 @@ class Solver(object):
 
         end_time = time.time()
         BoardPrinter(self.board).pretty_print()
-        self.print_stats(num_iterations, end_time - start_time)
+
+        if self.is_solved():
+            self.print_success_stats(num_iterations, end_time - start_time)
+        else:
+            self.print_failure_stats(num_iterations, end_time - start_time)
 
     def update_possibilities(self):
         # the board itself is the primary source of truth. Everything else is just for convenience
@@ -64,6 +68,13 @@ class Solver(object):
 
                     if self.expected_solution is not None:
                         assert(self.board[r][c] == self.expected_solution[r][c])
+
+    def is_solved(self):
+        for row in self.board:
+            for cell in row:
+                if not cell:
+                    return False
+        return True
 
     def update_rows_and_columns_from_solved_cells(self):
         for r in range(9):
@@ -225,8 +236,13 @@ class Solver(object):
         return changed
 
     @staticmethod
-    def print_stats(num_iterations, millis):
+    def print_success_stats(num_iterations, millis):
         print("Solved in", num_iterations, "iterations")
+        print("Took", round(millis, 4), "milliseconds")
+
+    @staticmethod
+    def print_failure_stats(num_iterations, millis):
+        print("Could not solve puzzle")
         print("Took", round(millis, 4), "milliseconds")
 
 
@@ -247,7 +263,7 @@ class BoardPrinter(object):
             if v:
                 characters.append(str(v))
             else:
-                characters.append(' ')
+                characters.append('.')
             if (i + 1) % 3 == 0 and i < len(row) - 1:
                 characters.append(' ')
         return ' '.join(characters)
@@ -255,26 +271,49 @@ class BoardPrinter(object):
 
 def main():
     x = None
-    solver = Solver(
-        [[x, x, x, 8, x, 5, x, 1, 3],
-         [x, x, x, 2, x, 3, 6, x, x],
-         [6, x, x, x, 9, x, 2, x, 4],
-         [x, x, x, x, x, x, x, x, 5],
-         [x, 4, x, 1, x, x, 7, x, 6],
-         [2, 5, 6, 3, x, 4, 8, 9, x],
-         [5, 9, x, x, x, 7, 1, x, 2],
-         [1, x, 2, x, 8, x, 4, 7, x],
-         [x, x, 4, 9, 1, x, x, 3, 8]],
+    # solver = Solver(
+    #     [[x, x, x, 8, x, 5, x, 1, 3],
+    #      [x, x, x, 2, x, 3, 6, x, x],
+    #      [6, x, x, x, 9, x, 2, x, 4],
+    #      [x, x, x, x, x, x, x, x, 5],
+    #      [x, 4, x, 1, x, x, 7, x, 6],
+    #      [2, 5, 6, 3, x, 4, 8, 9, x],
+    #      [5, 9, x, x, x, 7, 1, x, 2],
+    #      [1, x, 2, x, 8, x, 4, 7, x],
+    #      [x, x, 4, 9, 1, x, x, 3, 8]],
+    #
+    #     [[4, 2, 7, 8, 6, 5, 9, 1, 3],
+    #      [9, 1, 5, 2, 4, 3, 6, 8, 7],
+    #      [6, 8, 3, 7, 9, 1, 2, 5, 4],
+    #      [8, 7, 1, 6, 2, 9, 3, 4, 5],
+    #      [3, 4, 9, 1, 5, 8, 7, 2, 6],
+    #      [2, 5, 6, 3, 7, 4, 8, 9, 1],
+    #      [5, 9, 8, 4, 3, 7, 1, 6, 2],
+    #      [1, 3, 2, 5, 8, 6, 4, 7, 9],
+    #      [7, 6, 4, 9, 1, 2, 5, 3, 8]]
+    # )
+    # solver.solve()
 
-        [[4, 2, 7, 8, 6, 5, 9, 1, 3],
-         [9, 1, 5, 2, 4, 3, 6, 8, 7],
-         [6, 8, 3, 7, 9, 1, 2, 5, 4],
-         [8, 7, 1, 6, 2, 9, 3, 4, 5],
-         [3, 4, 9, 1, 5, 8, 7, 2, 6],
-         [2, 5, 6, 3, 7, 4, 8, 9, 1],
-         [5, 9, 8, 4, 3, 7, 1, 6, 2],
-         [1, 3, 2, 5, 8, 6, 4, 7, 9],
-         [7, 6, 4, 9, 1, 2, 5, 3, 8]]
+    solver = Solver(
+        [[9, x, 5, 4, x, x, 6, x, 7],
+         [x, x, x, 9, x, 7, x, x, x],
+         [4, 2, x, x, x, x, 9, 1, x],
+         [5, x, 8, x, x, x, x, x, x],
+         [x, x, x, x, 6, 5, x, x, x],
+         [x, x, x, 1, x, 9, x, x, x],
+         [x, x, 6, x, x, 3, 8, x, x],
+         [x, x, x, x, 8, x, x, 2, 6],
+         [8, x, x, 2, x, 6, 3, 4, x]],
+
+        [[9, 1, 5, 4, 3, 2, 6, 8, 7],
+         [6, 8, 3, 9, 1, 7, 2, 5, 4],
+         [4, 2, 7, 6, 5, 8, 9, 1, 3],
+         [5, 9, 8, 3, 7, 4, 1, 6, 2],
+         [1, 3, 2, 8, 6, 5, 4, 7, 9],
+         [7, 6, 4, 1, 2, 9, 5, 3, 8],
+         [2, 5, 6, 7, 4, 3, 8, 9, 1],
+         [3, 4, 9, 5, 8, 1, 7, 2, 6],
+         [8, 7, 1, 2, 9, 6, 3, 4, 5]]
     )
     solver.solve()
 
