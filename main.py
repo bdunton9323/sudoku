@@ -250,11 +250,22 @@ class Solver(object):
         print("Took", round(millis, 4), "milliseconds")
 
     def pretty_print(self):
-        for row in self.board:
-            str_list = [str(v) for v in row]
-            print(', '.join(str_list).replace('None', ' '))
-        print()
+        for i, row in enumerate(self.board):
+            print(self.format_row(row))
+            if (i + 1) % 3 == 0:
+                print(''.join([' ' for _ in range(26)]))
 
+    @staticmethod
+    def format_row(row: list[int]) -> str:
+        characters = []
+        for i, v in enumerate(row):
+            if v:
+                characters.append(str(v))
+            else:
+                characters.append(' ')
+            if (i + 1) % 3 == 0 and i < len(row) - 1:
+                characters.append(' ')
+        return ' '.join(characters)
 
 def main():
     x = None
