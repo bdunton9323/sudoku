@@ -84,8 +84,6 @@ class Solver(object):
                 # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
                 if len(self.cell_possible[r][c]) != 1:
                     possible_from_cells.update(self.cell_possible[r][c])
-            # TODO: the problem is that when cell_possible[r][c] is 1, we remove it from row_remaining, and then it uses
-            #       the fact that it's not possible later on in the intersection calculation
             self.row_remaining[r] = list(possible_from_cells.intersection(self.row_remaining[r]))
 
         for c in range(9):
@@ -100,7 +98,6 @@ class Solver(object):
         for r in range(9):
             for c in range(9):
                 if self.board[r][c] is None:
-                    # TODO: the possibility list should probably all be sets to avoid copyinng the data
                     self.cell_possible[r][c] = list(
                         set(self.row_remaining[r])
                         .union(self.col_remaining[c])
