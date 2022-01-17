@@ -1,6 +1,7 @@
 import time
 from copy import deepcopy
 from exceptions import ConstraintViolationError
+from typing import List
 from utils import assert_constraint
 
 
@@ -265,7 +266,8 @@ class Solver(object):
                     # anything in the same section is not possible for this cell
                     if val in self.state.get_possible_for_cell(r, c) and len(self.state.get_possible_for_cell(r, c)) != 1:
                         self.state.mark_value_impossible(r, c, val)
-                        # TODO: does this ever get hit? Why is it checking cell_possible instead of cell_possible[r][c]?
+                        # TODO: Why is it checking cell_possible instead of cell_possible[r][c]? It never gets hit.
+                        #       Why does it break when I change it?
                         if len(self.state.cell_possible) == 1:
                             self.update_board(r, c, val)
                             changed = True
@@ -274,6 +276,8 @@ class Solver(object):
 
     def check_intersections(self) -> bool:
         """
+        This uses the possible values for each row and column to find whether any cell has only one possible choice.
+
         If A is the set of possible values for row i, and B is the set of possible values in column j, then
         intersect(Ai, Bj) are the possible values for cell i,j.
         """
@@ -373,14 +377,14 @@ class SolverState(object):
         return new_state
 
     @property
-    def cell_possible(self):
+    def cell_possible(self) -> List[List[List[int]]]:
         return self._cell_possible
 
     @cell_possible.setter
     def cell_possible(self, val):
         self._cell_possible = val
 
-    def get_possible_for_cell(self, row, column):
+    def get_possible_for_cell(self, row, column) -> List[int]:
         return self.cell_possible[row][column]
 
     def mark_value_impossible(self, row, column, to_remove):
@@ -397,7 +401,7 @@ class SolverState(object):
         self.cell_possible[row][column] = value
 
     @property
-    def row_remaining(self) -> list[int]:
+    def row_remaining(self) -> List[List[int]]:
         return self._row_remaining
 
     @row_remaining.setter
@@ -405,7 +409,7 @@ class SolverState(object):
         self._row_remaining = val
 
     @property
-    def col_remaining(self) -> list[int]:
+    def col_remaining(self) -> List[List[int]]:
         return self._col_remaining
 
     @col_remaining.setter
@@ -460,4 +464,3 @@ class StatsTracker(object):
 
     def get_elapsed_time(self):
         return self.end_time - self.start_time
-
