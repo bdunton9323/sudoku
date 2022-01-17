@@ -90,7 +90,7 @@ class Solver(object):
         self.update_cell_possibilities()
         self.update_row_column_possibilities()
 
-        self.state.assert_consistency()
+        self.state.assert_still_valid()
 
     def update_rows_and_columns_from_solved_cells(self):
         for r in range(9):
