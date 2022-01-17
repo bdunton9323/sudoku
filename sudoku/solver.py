@@ -42,7 +42,7 @@ class Solver(object):
 
                 state_before_all_guesses = self.state.copy()
 
-                for guess in self.state.cell_possible[row][col]:
+                for guess in self.state.get_possible_for_cell(row, col):
                     state_before_this_guess = self.state.copy()
 
                     # if this guess was invalid from the start, then move on
@@ -96,19 +96,19 @@ class Solver(object):
     def assert_consistency(self):
         for r in range(9):
             for c in range(9):
-                assert_constraint(len(self.state.cell_possible[r][c]) != 0, f"No possible values for cell {r, c}")
+                assert_constraint(len(self.state.get_possible_for_cell(r, c)) != 0, f"No possible values for cell {r, c}")
                 if self.state.board[r][c] is not None:
                     assert_constraint(self.state.board[r][c] not in self.state.row_remaining, f"Solved cell still assignable in row {r}")
                     assert_constraint(self.state.board[r][c] not in self.state.col_remaining, f"Solved cell still assignable in column {c}")
-                    assert_constraint(self.state.board[r][c] == self.state.cell_possible[r][c][0], f"Solved cell {r, c} marked impossible")
-                    assert_constraint(len(self.state.cell_possible[r][c]) == 1, f"Cell {r, c} was solved but still has possibilities: {self.state.cell_possible[r][c]}")
+                    assert_constraint(self.state.board[r][c] == self.state.get_possible_for_cell(r, c)[0], f"Solved cell {r, c} marked impossible")
+                    assert_constraint(len(self.state.get_possible_for_cell(r, c)) == 1, f"Cell {r, c} was solved but still has possibilities: {self.state.get_possible_for_cell(r, c)}")
 
                     if self.state.expected_solution is not None:
                         expected = self.state.expected_solution[r][c]
                         actual = self.state.board[r][c]
                         assert_constraint(actual == expected, f"Cell {r, c} has value of {actual} did not match expected value {expected}")
 
-                if len(self.state.cell_possible[r][c]) == 1:
+                if len(self.state.get_possible_for_cell(r, c)) == 1:
                     # if there are no more possibiliites, yet this cell has not been solved, there is a bug
                     assert_constraint(
                         self.state.board[r][c] is not None,
@@ -183,31 +183,28 @@ class Solver(object):
             # what is possible for the row is the union of what is avaible in every cell
             for c in range(9):
                 # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
-                if len(self.state.cell_possible[r][c]) != 1:
-                    possible_from_cells.update(self.state.cell_possible[r][c])
+                if len(self.state.get_possible_for_cell(r, c)) != 1:
+                    possible_from_cells.update(self.state.get_possible_for_cell(r, c))
             self.state.row_remaining[r] = list(possible_from_cells.intersection(self.state.row_remaining[r]))
 
         for c in range(9):
             possible_from_cells = set()
             for r in range(9):
                 # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
-                if len(self.state.cell_possible[r][c]) != 1:
-                    possible_from_cells.update(self.state.cell_possible[r][c])
+                if len(self.state.get_possible_for_cell(r, c)) != 1:
+                    possible_from_cells.update(self.state.get_possible_for_cell(r, c))
             self.state.col_remaining[c] = list(possible_from_cells.intersection(self.state.col_remaining[c]))
 
     def update_cell_possibilities(self):
         for r in range(9):
             for c in range(9):
                 if self.state.board[r][c] is None:
-                    self.state.cell_possible[r][c] = list(
-                        set(self.state.row_remaining[r])
-                        .union(self.state.col_remaining[c])
-                        .intersection(set(self.state.cell_possible[r][c])))
+                    self.state.compute_new_cell_possibilities(r, c)
 
-                    if len(self.state.cell_possible[r][c]) == 1:
-                        self.update_board(r, c, self.state.cell_possible[r][c][0])
+                    if len(self.state.get_possible_for_cell(r, c)) == 1:
+                        self.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
                 else:
-                    self.state.cell_possible[r][c] = [self.state.board[r][c]]
+                    self.state.set_cell_possibilities(r, c, [self.state.board[r][c]])
 
     def update_board(self, row, column, value):
         if self.state.expected_solution is not None:
@@ -219,7 +216,7 @@ class Solver(object):
             self.state.row_remaining.remove(value)
         if value in self.state.col_remaining:
             self.state.col_remaining.remove(value)
-        self.state.cell_possible[row][column] = [value]
+        self.state.set_cell_possibilities(row, column, [value])
 
     def remove_row_possibility(self, row, value):
         if value in self.state.row_remaining[row]:
@@ -266,8 +263,9 @@ class Solver(object):
             for c in range(start_col, end_col):
                 for val in values_in_section:
                     # anything in the same section is not possible for this cell
-                    if val in self.state.cell_possible[r][c] and len(self.state.cell_possible[r][c]) != 1:
-                        self.state.cell_possible[r][c].remove(val)
+                    if val in self.state.get_possible_for_cell(r, c) and len(self.state.get_possible_for_cell(r, c)) != 1:
+                        self.state.mark_value_impossible(r, c, val)
+                        # TODO: does this ever get hit? Why is it checking cell_possible instead of cell_possible[r][c]?
                         if len(self.state.cell_possible) == 1:
                             self.update_board(r, c, val)
                             changed = True
@@ -381,6 +379,22 @@ class SolverState(object):
     @cell_possible.setter
     def cell_possible(self, val):
         self._cell_possible = val
+
+    def get_possible_for_cell(self, row, column):
+        return self.cell_possible[row][column]
+
+    def mark_value_impossible(self, row, column, to_remove):
+        if to_remove in self.cell_possible[row][column]:
+            self.cell_possible[row][column].remove(to_remove)
+
+    def compute_new_cell_possibilities(self, row, column):
+        self.cell_possible[row][column] = list(
+            set(self.row_remaining[row])
+                .union(self.col_remaining[column])
+                .intersection(set(self.cell_possible[row][column])))
+
+    def set_cell_possibilities(self, row, column, value: list[int]):
+        self.cell_possible[row][column] = value
 
     @property
     def row_remaining(self) -> list[int]:
