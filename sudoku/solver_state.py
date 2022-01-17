@@ -42,15 +42,16 @@ class SolverState(object):
         else:
             return False
 
-    def compute_new_cell_possibilities(self, row, column):
-        current_possible = set(self.row_remaining[row]).union(self.col_remaining[column])
-        old_possible = set(self.cell_possible[row][column])
-
-        # apply the updated information but intersect it with the old info so we don't go backward
-        self.cell_possible[row][column] = list(current_possible.intersection(old_possible))
-
     def set_cell_possibilities(self, row, column, value: list[int]):
         self.cell_possible[row][column] = value
+
+    def get_values_in_range(self, start_cell, end_cell):
+        values_in_section = []
+        for r in range(start_cell[0], end_cell[0]):
+            for c in range(start_cell[1], end_cell[1]):
+                if self.board[r][c] is not None:
+                    values_in_section.append(self.board[r][c])
+        return values_in_section
 
     @property
     def row_remaining(self) -> List[List[int]]:
@@ -78,6 +79,17 @@ class SolverState(object):
 
     # TODO: some of these seem like they should be assertions (the code has a bug rather than the solver tried an illegal value)
     def assert_consistency(self):
+        # no two values in the same column:
+        self.check_rows()
+
+        # no two values in the same row:
+        self.check_columns()
+
+        # no two values in the same section
+        for start_row in range(0, 7, 3):
+            for start_col in range(0, 7, 3):
+                self.check_section(start_row, start_row + 3, start_col, start_col + 3)
+
         for r in range(9):
             for c in range(9):
                 if len(self.get_possible_for_cell(r, c)) == 0:
@@ -110,17 +122,6 @@ class SolverState(object):
                         if actual != expected:
                             raise ConstraintViolationError(
                                 f"Cell {r, c} has value of {actual} did not match expected value {expected}")
-
-        # no two values in the same column:
-        self.check_rows()
-
-        # no two values in the same row:
-        self.check_columns()
-
-        # no two values in the same section
-        for start_row in range(0, 7, 3):
-            for start_col in range(0, 7, 3):
-                self.check_section(start_row, start_row + 3, start_col, start_col + 3)
 
     def check_rows(self):
         for r in range(9):

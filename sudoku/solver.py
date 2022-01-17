@@ -184,25 +184,19 @@ class Solver(object):
     # start values are inclusive
     # end values are exclusive
     def attempt_range(self, start_row, end_row, start_col, end_col):
-        values_in_section = []
 
         changed = False
-        for r in range(start_row, end_row):
-            for c in range(start_col, end_col):
-                if self.state.board[r][c] is not None:
-                    values_in_section.append(self.state.board[r][c])
+        values_in_section = self.state.get_values_in_range((start_row, start_col), (end_row, end_col))
 
         for r in range(start_row, end_row):
             for c in range(start_col, end_col):
                 # anything in the same section is not possible for this cell
                 for val in values_in_section:
-                    # don't remove the answer if this cell is solved
+                    # remove it as a possibility unless this has been solved
                     if len(self.state.get_possible_for_cell(r, c)) != 1:
                         changed = self.state.mark_value_impossible(r, c, val)
-                        # TODO: Why does it break when I uncomment this? Updating the board here seems to make sense
-                        # if len(self.state.cell_possible[r][c]) == 1:
-                        #     self.update_board(r, c, val)
-                        #     changed = True
+                        if len(self.state.cell_possible[r][c]) == 1:
+                            self.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
 
         return changed
 
@@ -216,14 +210,12 @@ class Solver(object):
         changed = False
         for r in range(9):
             for c in range(9):
-                # if it's known already, skip it
-                if self.state.board[r][c] is not None:
-                    continue
-
-                intersection = [v for v in self.state.row_remaining[r] if v in self.state.col_remaining[c]]
-                if len(intersection) == 1:
-                    self.update_board(r, c, intersection[0])
-                    changed = True
+                # for each unknown cell
+                if not self.state.board[r][c]:
+                    intersection = set(self.state.row_remaining[r]).intersection(self.state.col_remaining[c])
+                    if len(intersection) == 1:
+                        self.update_board(r, c, intersection.pop())
+                        changed = True
         return changed
 
     def check_known(self):
@@ -233,9 +225,7 @@ class Solver(object):
             if len(row_vals) == 1:
                 new_val = row_vals[0]
                 unknown_cols = [i for i, v in enumerate(self.state.board[r_num]) if v is None]
-                assert_constraint(
-                    len(unknown_cols) == 1,
-                    f"The only possibility for the row was {new_val} but there were {len(unknown_cols)} spaces left")
+                assert(len(unknown_cols) == 1)
                 self.update_board(r_num, unknown_cols[0], new_val)
                 changed = True
 
@@ -244,9 +234,7 @@ class Solver(object):
             if len(col_vals) == 1:
                 new_val = col_vals[0]
                 unknown_rows = [i for i, row in enumerate(self.state.board) if row[c_num] is None]
-                assert_constraint(
-                    len(unknown_rows) == 1,
-                    f"The only possibility for the colum was {new_val} but there were {len(unknown_rows)}  spaces left")
+                assert(len(unknown_rows) == 1)
                 self.update_board(unknown_rows[0], c_num, new_val)
                 changed = True
 

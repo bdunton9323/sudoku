@@ -1,4 +1,5 @@
 from exceptions import ConstraintViolationError
+import time
 
 
 def assert_constraint(condition, message="Game constraint violated"):
