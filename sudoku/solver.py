@@ -21,16 +21,16 @@ class Solver(object):
     def solve(self):
         stats = StatsTracker()
 
-        start_time = time.time()
+        stats.start_timer()
         self.solve_recursively(stats, 0)
-        end_time = time.time()
+        stats.stop_timer()
 
         BoardPrinter(self.board).pretty_print()
 
         if self.is_solved():
-            self.print_success_stats(stats.num_iterations, end_time - start_time)
+            self.print_success_stats(stats)
         else:
-            self.print_failure_stats(stats.num_iterations, end_time - start_time)
+            self.print_failure_stats(stats)
 
     def solve_recursively(self, stats_tracker, recursion_depth) -> bool:
         stats_tracker.on_recursion(recursion_depth)
@@ -41,7 +41,7 @@ class Solver(object):
             stats_tracker.num_iterations += self.iteratively_solve()
             if self.is_solved():
                 return True
-        except ConstraintViolationError as e:
+        except ConstraintViolationError:
             return False
 
         for row in range(8):
@@ -358,14 +358,15 @@ class Solver(object):
         return changed
 
     @staticmethod
-    def print_success_stats(num_iterations, millis):
-        print("Solved in", num_iterations, "iterations")
-        print("Took", round(millis, 4), "milliseconds")
+    def print_success_stats(stats):
+        print(f"Took {round(stats.get_elapsed_time(), 4)} milliseconds")
+        print(f"Solved in {stats.num_iterations} iterations, with max recursion depth {stats.get_max_recursion_depth()}")
 
     @staticmethod
-    def print_failure_stats(num_iterations, millis):
+    def print_failure_stats(stats):
         print("Could not solve puzzle")
-        print("Took", round(millis, 4), "milliseconds")
+        print(f"Took {round(stats.get_elapsed_time(), 4)} milliseconds")
+        print(f"Attempted {stats.num_iterations} iterations and max recursion depth {stats.get_max_recursion_depth()}")
 
 
 class BoardPrinter(object):
@@ -396,6 +397,8 @@ class StatsTracker(object):
         self.num_iterations = None
         self.num_guesses = 0
         self.max_recursion_depth = 0
+        self.start_time = 0
+        self.end_time = 0
 
     @property
     def num_iterations(self):
@@ -416,3 +419,16 @@ class StatsTracker(object):
     def on_recursion(self, depth):
         if depth > self.max_recursion_depth:
             self.max_recursion_depth = depth
+
+    def get_max_recursion_depth(self):
+        return self.max_recursion_depth
+
+    def start_timer(self):
+        self.start_time = time.time()
+
+    def stop_timer(self):
+        self.end_time = time.time()
+
+    def get_elapsed_time(self):
+        return self.end_time - self.start_time
+
