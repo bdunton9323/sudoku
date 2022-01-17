@@ -143,18 +143,9 @@ class Solver(object):
         self.check_columns()
 
         # no two values in the same section
-        # TODO: this can be a loop
-        self.check_section(0, 3, 0, 3)
-        self.check_section(0, 3, 3, 6)
-        self.check_section(0, 3, 6, 9)
-
-        self.check_section(3, 6, 0, 3)
-        self.check_section(3, 6, 3, 6)
-        self.check_section(3, 6, 6, 9)
-
-        self.check_section(6, 9, 0, 3)
-        self.check_section(6, 9, 3, 6)
-        self.check_section(6, 9, 6, 9)
+        for start_row in range(0, 7, 3):
+            for start_col in range(0, 7, 3):
+                self.check_section(start_row, start_row + 3, start_col, start_col + 3)
 
     def check_rows(self):
         for r in range(9):
