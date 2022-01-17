@@ -267,17 +267,9 @@ class Solver(object):
         changed = False
 
         # look at each of the 3x3 sections
-        changed = self.attempt_range(0, 3, 0, 3) or changed
-        changed = self.attempt_range(0, 3, 3, 6) or changed
-        changed = self.attempt_range(0, 3, 6, 9) or changed
-
-        changed = self.attempt_range(3, 6, 0, 3) or changed
-        changed = self.attempt_range(3, 6, 3, 6) or changed
-        changed = self.attempt_range(3, 6, 6, 9) or changed
-
-        changed = self.attempt_range(6, 9, 0, 3) or changed
-        changed = self.attempt_range(6, 9, 3, 6) or changed
-        changed = self.attempt_range(6, 9, 6, 9) or changed
+        for start_row in range(0, 7, 3):
+            for start_col in range(0, 7, 3):
+                changed = self.attempt_range(start_row, start_row + 3, start_col, start_col + 3) or changed
 
         return changed
 
