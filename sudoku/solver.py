@@ -17,7 +17,7 @@ class Solver(object):
 
         BoardPrinter(self.state.board).pretty_print()
 
-        if self.is_solved():
+        if self.state.is_solved():
             self.print_success_stats(stats)
         else:
             self.print_failure_stats(stats)
@@ -29,7 +29,7 @@ class Solver(object):
         try:
             self.update_possibilities()
             stats_tracker.num_iterations += self.iteratively_solve()
-            if self.is_solved():
+            if self.state.is_solved():
                 return True
         except ConstraintViolationError:
             return False
@@ -48,8 +48,7 @@ class Solver(object):
                     # if this guess was invalid from the start, then move on
                     try:
                         self.update_board(row, col, guess)
-                    except ConstraintViolationError as e:
-                        print(f"Tried setting {row, col} to {guess} but it led to a violation: {e.message}")
+                    except ConstraintViolationError:
                         self.state = state_before_this_guess
 
                     # if this guess did not eventually lead to a correct solution
@@ -57,7 +56,7 @@ class Solver(object):
                         self.state = state_before_this_guess
 
                 # if none of the guesses worked
-                if not self.is_solved():
+                if not self.state.is_solved():
                     self.state = state_before_all_guesses
                     return False
 
@@ -91,80 +90,7 @@ class Solver(object):
         self.update_cell_possibilities()
         self.update_row_column_possibilities()
 
-        self.assert_consistency()
-
-    def assert_consistency(self):
-        for r in range(9):
-            for c in range(9):
-                assert_constraint(len(self.state.get_possible_for_cell(r, c)) != 0, f"No possible values for cell {r, c}")
-                if self.state.board[r][c] is not None:
-                    assert_constraint(self.state.board[r][c] not in self.state.row_remaining, f"Solved cell still assignable in row {r}")
-                    assert_constraint(self.state.board[r][c] not in self.state.col_remaining, f"Solved cell still assignable in column {c}")
-                    assert_constraint(self.state.board[r][c] == self.state.get_possible_for_cell(r, c)[0], f"Solved cell {r, c} marked impossible")
-                    assert_constraint(len(self.state.get_possible_for_cell(r, c)) == 1, f"Cell {r, c} was solved but still has possibilities: {self.state.get_possible_for_cell(r, c)}")
-
-                    if self.state.expected_solution is not None:
-                        expected = self.state.expected_solution[r][c]
-                        actual = self.state.board[r][c]
-                        assert_constraint(actual == expected, f"Cell {r, c} has value of {actual} did not match expected value {expected}")
-
-                if len(self.state.get_possible_for_cell(r, c)) == 1:
-                    # if there are no more possibiliites, yet this cell has not been solved, there is a bug
-                    assert_constraint(
-                        self.state.board[r][c] is not None,
-                        f"Cell {r, c} has no more possible values but wasn't marked on the board")
-
-        # no two values in the same column:
-        self.check_rows()
-
-        # no two values in the same row:
-        self.check_columns()
-
-        # no two values in the same section
-        for start_row in range(0, 7, 3):
-            for start_col in range(0, 7, 3):
-                self.check_section(start_row, start_row + 3, start_col, start_col + 3)
-
-    def check_rows(self):
-        for r in range(9):
-            row_values = set()
-            for c in range(9):
-                value = self.state.board[r][c]
-                if value:
-                    assert_constraint(value not in row_values, f"Cell {r, c} value {value} is duplicatedd in row")
-                    row_values.add(value)
-
-    def check_columns(self):
-        for c in range(9):
-            col_values = set()
-            for r in range(9):
-                value = self.state.board[r][c]
-                if value:
-                    assert_constraint(self.state.board[r][c] not in col_values, f"Cell {r, c} is duplicated in column")
-                    col_values.add(value)
-
-    def check_section(self, start_row, end_row, start_col, end_col):
-        nums_in_section = set()
-        for r in range(start_row, end_row):
-            for c in range(start_col, end_col):
-                assert_constraint(
-                    self.state.board[r][c] not in nums_in_section,
-                    f"Duplicate value {self.state.board[r][c]} in section {(start_row, end_row), (start_col, end_col)}")
-                if self.state.board[r][c] is not None:
-                    nums_in_section.add(self.state.board[r][c])
-
-    def is_solved(self):
-        for row in self.state.board:
-            for cell in row:
-                if not cell:
-                    return False
-
-        try:
-            self.assert_consistency()
-        except ConstraintViolationError:
-            return False
-
-        return True
+        self.state.assert_consistency()
 
     def update_rows_and_columns_from_solved_cells(self):
         for r in range(9):
@@ -199,12 +125,19 @@ class Solver(object):
         for r in range(9):
             for c in range(9):
                 if self.state.board[r][c] is None:
-                    self.state.compute_new_cell_possibilities(r, c)
+                    self.compute_new_cell_possibilities(r, c)
 
                     if len(self.state.get_possible_for_cell(r, c)) == 1:
                         self.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
                 else:
                     self.state.set_cell_possibilities(r, c, [self.state.board[r][c]])
+
+    def compute_new_cell_possibilities(self, row, column):
+        current_possible = set(self.state.row_remaining[row]).union(self.state.col_remaining[column])
+        old_possible = set(self.state.get_possible_for_cell(row, column))
+
+        # apply the updated information but intersect it with the old info so we don't go backward
+        self.state.cell_possible[row][column] = list(current_possible.intersection(old_possible))
 
     def update_board(self, row, column, value):
         if self.state.expected_solution is not None:
@@ -261,15 +194,15 @@ class Solver(object):
 
         for r in range(start_row, end_row):
             for c in range(start_col, end_col):
+                # anything in the same section is not possible for this cell
                 for val in values_in_section:
-                    # anything in the same section is not possible for this cell
-                    if val in self.state.get_possible_for_cell(r, c) and len(self.state.get_possible_for_cell(r, c)) != 1:
-                        self.state.mark_value_impossible(r, c, val)
-                        # TODO: Why is it checking cell_possible instead of cell_possible[r][c]? It never gets hit.
-                        #       Why does it break when I change it?
-                        if len(self.state.cell_possible) == 1:
-                            self.update_board(r, c, val)
-                            changed = True
+                    # don't remove the answer if this cell is solved
+                    if len(self.state.get_possible_for_cell(r, c)) != 1:
+                        changed = self.state.mark_value_impossible(r, c, val)
+                        # TODO: Why does it break when I uncomment this? Updating the board here seems to make sense
+                        # if len(self.state.cell_possible[r][c]) == 1:
+                        #     self.update_board(r, c, val)
+                        #     changed = True
 
         return changed
 
@@ -302,7 +235,7 @@ class Solver(object):
                 unknown_cols = [i for i, v in enumerate(self.state.board[r_num]) if v is None]
                 assert_constraint(
                     len(unknown_cols) == 1,
-                    f"The only possibility for the row was {new_val} but there were {len(unknown_cols)} left on the board")
+                    f"The only possibility for the row was {new_val} but there were {len(unknown_cols)} spaces left")
                 self.update_board(r_num, unknown_cols[0], new_val)
                 changed = True
 
@@ -313,7 +246,7 @@ class Solver(object):
                 unknown_rows = [i for i, row in enumerate(self.state.board) if row[c_num] is None]
                 assert_constraint(
                     len(unknown_rows) == 1,
-                    f"The only possibility for the colum was {new_val} but there were {len(unknown_rows)} left on the board")
+                    f"The only possibility for the colum was {new_val} but there were {len(unknown_rows)}  spaces left")
                 self.update_board(unknown_rows[0], c_num, new_val)
                 changed = True
 
@@ -322,13 +255,13 @@ class Solver(object):
     @staticmethod
     def print_success_stats(stats):
         print(f"Took {round(stats.get_elapsed_time(), 4)} milliseconds")
-        print(f"Solved in {stats.num_iterations} iterations, with max recursion depth {stats.get_max_recursion_depth()}")
+        print(f"Solved in {stats.num_iterations} passes, with max recursion depth {stats.get_max_recursion_depth()}")
 
     @staticmethod
     def print_failure_stats(stats):
         print("Could not solve puzzle")
         print(f"Took {round(stats.get_elapsed_time(), 4)} milliseconds")
-        print(f"Attempted {stats.num_iterations} iterations and max recursion depth {stats.get_max_recursion_depth()}")
+        print(f"Attempted {stats.num_iterations} passes and max recursion depth {stats.get_max_recursion_depth()}")
 
 
 class BoardPrinter(object):
