@@ -29,7 +29,7 @@ class Solver(object):
 
         # Using what is known, get as many cells as possible using the game constraints.
         try:
-            self.update_possibilities()
+            self.make_consistent()
             stats_tracker.num_iterations += self.iteratively_solve()
             if self.state.is_solved():
                 return True
@@ -64,7 +64,7 @@ class Solver(object):
 
         return True
 
-    def iteratively_solve(self):
+    def iteratively_solve(self) -> int:
         changed = True
         num_iterations = 0
         while changed:
@@ -72,22 +72,24 @@ class Solver(object):
             changed = False
 
             if self.check_intersections():
-                self.update_possibilities()
+                self.make_consistent()
                 changed = True
 
-            if self.check_known():
-                self.update_possibilities()
+            if self.check_for_single_possibilities():
+                self.make_consistent()
                 changed = True
 
             # Can't repeat a number within a 3x3 section, so filter the possibilities
             if self.attempt_section():
-                self.update_possibilities()
+                self.make_consistent()
                 changed = True
 
         return num_iterations
 
-    def update_possibilities(self):
-        # the board itself is the primary source of truth. Everything else is just for convenience
+    def make_consistent(self):
+        """
+        If any cells have been solved or narrowed down, update all the possibility lists so they are consistent
+        """
         self.update_rows_and_columns_from_solved_cells()
         self.update_cell_possibilities()
         self.update_row_column_possibilities()
@@ -161,20 +163,31 @@ class Solver(object):
                     if not self.state.cell_solved(row, col):
                         self.state.update_board(row, col, self.state.col_remaining[col][0])
 
-    def attempt_section(self):
+    def attempt_section(self) -> bool:
         changed = False
 
         # look at each of the 3x3 sections
         for start_row in range(0, 7, 3):
             for start_col in range(0, 7, 3):
-                changed = self.attempt_range(start_row, start_row + 3, start_col, start_col + 3) or changed
+                # changed = self.attempt_range(start_row, start_row + 3, start_col, start_col + 3) or changed
+                changed = self.attempt_range((start_row, start_col), (start_row + 3, start_col + 3)) or changed
 
         return changed
 
     # start values are inclusive
     # end values are exclusive
-    def attempt_range(self, start_row, end_row, start_col, end_col):
+    def attempt_range(self, start_cell: (int, int), end_cell: (int, int)) -> bool:
+        """
+        Solve as much as possible in a given section (defined by a range of cells)
 
+        Arguments:
+            start_cell: the (row, column) of the cell at the beginning of the range
+            end_cell: the (row, column) of the cell at the end of the range (non-inclusive)
+        """
+        start_row = start_cell[0]
+        start_col = start_cell[1]
+        end_row = end_cell[0]
+        end_col = end_cell[1]
         changed = False
         values_in_section = self.state.get_values_in_range((start_row, start_col), (end_row, end_col))
 
@@ -208,7 +221,7 @@ class Solver(object):
                         changed = True
         return changed
 
-    def check_known(self):
+    def check_for_single_possibilities(self) -> bool:
         changed = False
         for r_num, row_vals in enumerate(self.state.row_remaining):
             # if there is only one possibility for the row, we can fill it in
