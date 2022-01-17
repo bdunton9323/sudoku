@@ -22,7 +22,7 @@ class Solver(object):
         stats = StatsTracker()
 
         start_time = time.time()
-        self.solve_internal(stats)
+        self.solve_recursively(stats, 0)
         end_time = time.time()
 
         BoardPrinter(self.board).pretty_print()
@@ -31,9 +31,10 @@ class Solver(object):
             self.print_success_stats(stats.num_iterations, end_time - start_time)
         else:
             self.print_failure_stats(stats.num_iterations, end_time - start_time)
-            print(stats.get_guesses())
 
-    def solve_internal(self, stats_tracker) -> bool:
+    def solve_recursively(self, stats_tracker, recursion_depth) -> bool:
+        stats_tracker.on_recursion(recursion_depth)
+
         # Using what is known, get as many cells as possible using the game constraints.
         try:
             self.update_possibilities()
@@ -41,7 +42,6 @@ class Solver(object):
             if self.is_solved():
                 return True
         except ConstraintViolationError as e:
-            #print(e.message)
             return False
 
         for row in range(8):
@@ -61,8 +61,6 @@ class Solver(object):
                     this_guess_col = deepcopy(self.col_remaining)
                     this_guess_cell = deepcopy(self.cell_possible)
 
-                    stats_tracker.add_guess(row, col, guess)
-
                     # if this guess was invalid from the start, then move on
                     try:
                         self.update_board(row, col, guess)
@@ -71,7 +69,7 @@ class Solver(object):
                         self.rewind(this_guess_board, this_guess_row, this_guess_col, this_guess_cell)
 
                     # if this guess did not eventually lead to a correct solution
-                    if not self.solve_internal(stats_tracker):
+                    if not self.solve_recursively(stats_tracker, recursion_depth + 1):
                         self.rewind(this_guess_board, this_guess_row, this_guess_col, this_guess_cell)
 
                 # if none of the guesses worked
@@ -108,26 +106,6 @@ class Solver(object):
                 changed = True
 
         return num_iterations
-
-    def rank_cells_by_easiness(self) -> list[(int, int)]:
-        # num_guesses -> (row, col)
-        ranked_cells = {}
-
-        for r in range(9):
-            for c in range(9):
-                num_possible = len(self.cell_possible[r][c])
-                # Don't take solved cells into account
-                if num_possible != 1:
-                    if num_possible not in ranked_cells:
-                        ranked_cells[num_possible] = []
-                    ranked_cells[num_possible].append((r, c))
-
-        # flatten to list
-        cells = []
-        for easiness_factor in sorted(ranked_cells.keys()):
-            for cell in ranked_cells[easiness_factor]:
-                cells.append(cell)
-        return cells
 
     def update_possibilities(self):
         # the board itself is the primary source of truth. Everything else is just for convenience
@@ -417,7 +395,7 @@ class StatsTracker(object):
     def __init__(self):
         self.num_iterations = None
         self.num_guesses = 0
-        self.guesses = [[[] for _ in range(1, 10)] for _ in range(1, 10)]
+        self.max_recursion_depth = 0
 
     @property
     def num_iterations(self):
@@ -435,8 +413,6 @@ class StatsTracker(object):
     def num_guesses(self, val):
         self._num_iterations = val
 
-    def add_guess(self, row, col, guess):
-        self.guesses[row][col].append(guess)
-
-    def get_guesses(self):
-        return self.guesses
+    def on_recursion(self, depth):
+        if depth > self.max_recursion_depth:
+            self.max_recursion_depth = depth
