@@ -1,10 +1,4 @@
-from exceptions import ConstraintViolationError
 import time
-
-
-def assert_constraint(condition, message="Game constraint violated"):
-    if not condition:
-        raise ConstraintViolationError(message)
 
 
 class StatsTracker(object):

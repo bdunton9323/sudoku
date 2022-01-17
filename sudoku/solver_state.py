@@ -4,9 +4,8 @@ from typing import List
 
 
 class SolverState(object):
-    def __init__(self, board, expected_solution):
+    def __init__(self, board):
         self.board = board
-        self.expected_solution = expected_solution
 
         # This gives the remaining choices for cells in a row. When this is empty the row is solved.
         self.row_remaining = [[i for i in range(1, 10)] for _ in range(1, 10)]
@@ -18,19 +17,11 @@ class SolverState(object):
         self.cell_possible = [[[i for i in range(1, 10)] for _ in range(1, 10)] for _ in range(1, 10)]
 
     def copy(self):
-        new_state = SolverState(deepcopy(self.board), self.expected_solution)
+        new_state = SolverState(deepcopy(self.board))
         new_state.cell_possible = deepcopy(self.cell_possible)
         new_state.row_remaining = deepcopy(self.row_remaining)
         new_state.col_remaining = deepcopy(self.col_remaining)
         return new_state
-
-    @property
-    def cell_possible(self) -> List[List[List[int]]]:
-        return self._cell_possible
-
-    @cell_possible.setter
-    def cell_possible(self, val):
-        self._cell_possible = val
 
     def get_possible_for_cell(self, row, column) -> List[int]:
         return self.cell_possible[row][column]
@@ -69,13 +60,28 @@ class SolverState(object):
     def col_remaining(self, val):
         self._col_remaining = val
 
-    @property
-    def board(self):
-        return self._board
+    def board_at(self, row, column):
+        return self.board[row][column]
 
-    @board.setter
-    def board(self, val):
-        self._board = val
+    def set_cell(self, row, column, value):
+        self.board[row][column] = value
+
+    def cell_solved(self, row: int, column: int) -> bool:
+        return self.board[row][column] is not None
+
+    def get_row(self, row):
+        return self.board[row]
+
+    def get_column(self, col):
+        return [v[col] for v in self.board]
+
+    def update_board(self, row, column, value):
+        self.set_cell(row, column, value)
+        if value in self.row_remaining:
+            self.row_remaining.remove(value)
+        if value in self.col_remaining:
+            self.col_remaining.remove(value)
+        self.set_cell_possibilities(row, column, [value])
 
     def assert_still_valid(self):
         # no two values in the same column:
@@ -132,6 +138,12 @@ class SolverState(object):
             return False
 
         return True
+
+    def compare_to_expected(self, expected_solution):
+        for r in range(9):
+            for c in range(9):
+                if self.board[r][c] != expected_solution[r][c]:
+                    print(f"{r, c} was {self.board[r][c]} but expected {expected_solution[r][c]}")
 
     def _assert_internal_consistency(self):
         for r in range(9):

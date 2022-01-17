@@ -1,12 +1,12 @@
 from exceptions import ConstraintViolationError
 from solver_state import SolverState
-from utils import assert_constraint
-from utils import StatsTracker
+from stats import StatsTracker
 
 
 class Solver(object):
     def __init__(self, board, expected_solution=None):
-        self.state = SolverState(board, expected_solution)
+        self.state = SolverState(board)
+        self.expected_solution = expected_solution
 
     def solve(self):
         stats = StatsTracker()
@@ -18,6 +18,8 @@ class Solver(object):
         BoardPrinter(self.state.board).pretty_print()
 
         if self.state.is_solved():
+            if self.expected_solution:
+                self.state.compare_to_expected(self.expected_solution)
             self.print_success_stats(stats)
         else:
             self.print_failure_stats(stats)
@@ -37,7 +39,7 @@ class Solver(object):
         for row in range(8):
             for col in range(8):
                 # scan to the first unsolved space
-                if self.state.board[row][col] is not None:
+                if self.state.cell_solved(row, col):
                     continue
 
                 state_before_all_guesses = self.state.copy()
@@ -47,7 +49,7 @@ class Solver(object):
 
                     # if this guess was invalid from the start, then move on
                     try:
-                        self.update_board(row, col, guess)
+                        self.state.update_board(row, col, guess)
                     except ConstraintViolationError:
                         self.state = state_before_this_guess
 
@@ -95,7 +97,7 @@ class Solver(object):
     def update_rows_and_columns_from_solved_cells(self):
         for r in range(9):
             for c in range(9):
-                cell_value = self.state.board[r][c]
+                cell_value = self.state.board_at(r, c)
 
                 if cell_value in self.state.row_remaining[r]:
                     self.remove_row_possibility(r, cell_value)
@@ -124,32 +126,20 @@ class Solver(object):
     def update_cell_possibilities(self):
         for r in range(9):
             for c in range(9):
-                if self.state.board[r][c] is None:
+                if self.state.board_at(r, c) is None:
                     self.compute_new_cell_possibilities(r, c)
 
                     if len(self.state.get_possible_for_cell(r, c)) == 1:
-                        self.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
+                        self.state.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
                 else:
-                    self.state.set_cell_possibilities(r, c, [self.state.board[r][c]])
+                    self.state.set_cell_possibilities(r, c, [self.state.board_at(r, c)])
 
     def compute_new_cell_possibilities(self, row, column):
         current_possible = set(self.state.row_remaining[row]).union(self.state.col_remaining[column])
         old_possible = set(self.state.get_possible_for_cell(row, column))
 
         # apply the updated information but intersect it with the old info so we don't go backward
-        self.state.cell_possible[row][column] = list(current_possible.intersection(old_possible))
-
-    def update_board(self, row, column, value):
-        if self.state.expected_solution is not None:
-            expected = self.state.expected_solution[row][column]
-            assert_constraint(value == expected, f"Cell {row, column} was {value}, but expected {expected}")
-
-        self.state.board[row][column] = value
-        if value in self.state.row_remaining:
-            self.state.row_remaining.remove(value)
-        if value in self.state.col_remaining:
-            self.state.col_remaining.remove(value)
-        self.state.set_cell_possibilities(row, column, [value])
+        self.state.set_cell_possibilities(row, column, list(current_possible.intersection(old_possible)))
 
     def remove_row_possibility(self, row, value):
         if value in self.state.row_remaining[row]:
@@ -158,8 +148,8 @@ class Solver(object):
             if len(self.state.row_remaining[row]) == 1:
                 # We can solve a cell. Find which column it is.
                 for col in range(9):
-                    if self.state.board[row][col] is None:
-                        self.update_board(row, col, self.state.row_remaining[row][0])
+                    if self.state.board_at(row, col) is None:
+                        self.state.update_board(row, col, self.state.row_remaining[row][0])
 
     def remove_col_possibility(self, col, value):
         if value in self.state.col_remaining[col]:
@@ -168,8 +158,8 @@ class Solver(object):
             if len(self.state.col_remaining[col]) == 1:
                 # We can solve a cell. Find which row it is.
                 for row in range(9):
-                    if self.state.board[row][col] is None:
-                        self.update_board(row, col, self.state.col_remaining[col][0])
+                    if not self.state.cell_solved(row, col):
+                        self.state.update_board(row, col, self.state.col_remaining[col][0])
 
     def attempt_section(self):
         changed = False
@@ -195,8 +185,8 @@ class Solver(object):
                     # remove it as a possibility unless this has been solved
                     if len(self.state.get_possible_for_cell(r, c)) != 1:
                         changed = self.state.mark_value_impossible(r, c, val)
-                        if len(self.state.cell_possible[r][c]) == 1:
-                            self.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
+                        if len(self.state.get_possible_for_cell(r, c)) == 1:
+                            self.state.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
 
         return changed
 
@@ -211,10 +201,10 @@ class Solver(object):
         for r in range(9):
             for c in range(9):
                 # for each unknown cell
-                if not self.state.board[r][c]:
+                if not self.state.cell_solved(r, c):
                     intersection = set(self.state.row_remaining[r]).intersection(self.state.col_remaining[c])
                     if len(intersection) == 1:
-                        self.update_board(r, c, intersection.pop())
+                        self.state.update_board(r, c, intersection.pop())
                         changed = True
         return changed
 
@@ -224,18 +214,18 @@ class Solver(object):
             # if there is only one possibility for the row, we can fill it in
             if len(row_vals) == 1:
                 new_val = row_vals[0]
-                unknown_cols = [i for i, v in enumerate(self.state.board[r_num]) if v is None]
+                unknown_cols = [i for i, v in enumerate(self.state.get_row(r_num)) if v is None]
                 assert(len(unknown_cols) == 1)
-                self.update_board(r_num, unknown_cols[0], new_val)
+                self.state.update_board(r_num, unknown_cols[0], new_val)
                 changed = True
 
         for c_num, col_vals in enumerate(self.state.col_remaining):
             # if there is only one possibility for the column, we can fill it in
             if len(col_vals) == 1:
                 new_val = col_vals[0]
-                unknown_rows = [i for i, row in enumerate(self.state.board) if row[c_num] is None]
+                unknown_rows = [row_num for row_num, val in enumerate(self.state.get_column(c_num)) if val is None]
                 assert(len(unknown_rows) == 1)
-                self.update_board(unknown_rows[0], c_num, new_val)
+                self.state.update_board(unknown_rows[0], c_num, new_val)
                 changed = True
 
         return changed
