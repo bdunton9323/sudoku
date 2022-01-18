@@ -105,8 +105,8 @@ class Solver(object):
         """
         If any cells have been solved or narrowed down, update all the possibility lists so they are consistent
         """
-        self.update_rows_and_columns_from_solved_cells()
         self.update_cell_possibilities()
+        self.update_rows_and_columns_from_solved_cells()
         self.update_row_column_possibilities()
 
         self.state.assert_still_valid()
@@ -239,7 +239,7 @@ class Solver(object):
         changed = False
         for r in range(9):
             remaining = self.state.get_choices_for_row(r)
-            # if there is only one possibility for the column, we can fill it in on the board
+            # if there is only one possibility for the row, we can fill it in on the board
             if len(remaining) == 1:
                 unknown_cols = [i for i, v in enumerate(self.state.get_row(r)) if v is None]
                 assert (len(unknown_cols) == 1)

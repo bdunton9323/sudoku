@@ -138,9 +138,9 @@ class SolverState(object):
         # update all derived information
         self.set_choices_for_cell(row, column, [value])
         if value in self.row_remaining:
-            self.row_remaining.remove(value)
+            self.row_remaining[row].remove(value)
         if value in self.col_remaining:
-            self.col_remaining.remove(value)
+            self.col_remaining[column].remove(value)
 
     def is_solved(self) -> bool:
         """ Returns True if every cell in the board has a known value """
