@@ -4,6 +4,17 @@ from stats import StatsTracker
 
 
 class Solver(object):
+    """
+    Solves a Sudoku puzzle.
+
+    The algorithm is structured as follows:
+        1. Use the known cells to figure out what is possible in each row, column, 3x3 section, and cell
+        2. Use the updated information to rule out possibilities and solve cells.
+        3. Repeat 2 until we cannot get any more. Easier puzzles will be solved at this point.
+        4. If it is still not solved, pick an empty cell and arbitrarily choose one of its possible values
+        5. Repeat from step 1. If the assumption in step 4 resulted in an illegal board, revert and try a new value
+        6. Repeat step 5 until board is solved.
+    """
     def __init__(self, board, expected_solution=None):
         self.state = SolverState(board)
         self.expected_solution = expected_solution
@@ -40,7 +51,7 @@ class Solver(object):
         for row in range(9):
             for col in range(9):
                 # scan to the first unsolved space
-                if self.state.cell_solved(row, col):
+                if self.state.is_cell_solved(row, col):
                     continue
 
                 state_before_all_guesses = self.state.copy()
@@ -54,7 +65,7 @@ class Solver(object):
                     except ConstraintViolationError:
                         self.state = state_before_this_guess
 
-                    # if this guess did not eventually lead to a correct solution
+                    # if this guess did not eventually lead to a correct solution, then the guess was wrong
                     if not self.solve_recursively(stats_tracker, recursion_depth + 1):
                         self.state = state_before_this_guess
 
@@ -72,10 +83,13 @@ class Solver(object):
             num_iterations += 1
             changed = False
 
+            # Check the intersections between the possible row and column values at each cell. If any have a single
+            # point of intersection then we can solve it.
             if self.check_intersections():
                 self.make_consistent()
                 changed = True
 
+            # Check to see if any cell has only one possible value
             if self.check_for_single_possibilities():
                 self.make_consistent()
                 changed = True
@@ -158,7 +172,7 @@ class Solver(object):
             if len(self.state.get_choices_for_col(col)) == 1:
                 # We can solve a cell. Find which row it is.
                 for row in range(9):
-                    if not self.state.cell_solved(row, col):
+                    if not self.state.is_cell_solved(row, col):
                         self.state.update_board(row, col, self.state.get_choices_for_col(col)[0])
 
     def attempt_section(self) -> bool:
@@ -212,7 +226,7 @@ class Solver(object):
         for r in range(9):
             for c in range(9):
                 # for each unknown cell, intersect the possibilities for that row and column
-                if not self.state.cell_solved(r, c):
+                if not self.state.is_cell_solved(r, c):
                     row_choices = self.state.get_choices_for_row(r)
                     col_choices = self.state.get_choices_for_col(c)
                     intersection = set(row_choices).intersection(col_choices)
