@@ -1,5 +1,7 @@
 # Sudoku solver
-This is a program I wrote that solves a Sudoku puzzle.
+This program solves Sudoku puzzles. It is my own algorithm. I'm sure there are ways to
+make it more efficient but it works pretty well. On my machine it can solve a "hard" puzzle
+in 0.68ms.
 
 ## Running it
 ```bash
