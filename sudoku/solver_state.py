@@ -1,9 +1,15 @@
 from copy import deepcopy
 from exceptions import ConstraintViolationError
+from itertools import chain
 from typing import List
 
 
 class SolverState(object):
+    """
+    This class resembles the scratch pad that a human would use when solving Sudoku. It tracks what is assigned in
+    every cell, what is still possible for each cell, and what is still possible in each row and column. Most of the
+    methods in here are related to manipulating that information and accessing it in different ways.
+    """
     def __init__(self, board):
         self.board = board
 
@@ -36,7 +42,27 @@ class SolverState(object):
     def set_cell_possibilities(self, row, column, value: list[int]):
         self.cell_possible[row][column] = value
 
+    def get_remaining_cell_choices_in_row(self, row) -> set[int]:
+        # only include unsolved cells because solved ones are no longer available to assign
+        # cells with one possibility are known
+        # unknowns = filter(lambda c:  len(c) != 1, self.cell_possible[row])
+        # return list(chain.from_iterable(unknowns))
+        choices = set()
+        for col in range(9):
+            if len(self.cell_possible[row][col]) != 1:
+                choices.update(self.cell_possible[row][col])
+        return choices
+
+    def get_remaining_cell_choices_in_col(self, col: int) -> set[int]:
+        # building a set explicitly is much faster than using itertools.chain(filter()))
+        choices = set()
+        for row in range(9):
+            if len(self.cell_possible[row][col]) != 1:
+                choices.update(self.cell_possible[row][col])
+        return choices
+
     def get_values_in_range(self, start_cell, end_cell):
+        # building a set explicitly is much faster than using itertools.chain(filter()))
         values_in_section = []
         for r in range(start_cell[0], end_cell[0]):
             for c in range(start_cell[1], end_cell[1]):
@@ -44,21 +70,25 @@ class SolverState(object):
                     values_in_section.append(self.board[r][c])
         return values_in_section
 
-    @property
-    def row_remaining(self) -> List[List[int]]:
-        return self._row_remaining
+    def get_choices_for_row(self, row):
+        return self.row_remaining[row]
 
-    @row_remaining.setter
-    def row_remaining(self, val):
-        self._row_remaining = val
+    def set_choices_for_row(self, row, new_choices: List[int]):
+        self.row_remaining[row] = new_choices
 
-    @property
-    def col_remaining(self) -> List[List[int]]:
-        return self._col_remaining
+    def get_choices_for_col(self, col):
+        return self.col_remaining[col]
 
-    @col_remaining.setter
-    def col_remaining(self, val):
-        self._col_remaining = val
+    def set_choices_for_col(self, col, new_choices: List[int]):
+        self.col_remaining[col] = new_choices
+
+    def remove_row_choice(self, row, value):
+        if value in self.row_remaining[row]:
+            self.row_remaining[row].remove(value)
+
+    def remove_col_choice(self, col, value):
+        if value in self.col_remaining[col]:
+            self.col_remaining[col].remove(value)
 
     def board_at(self, row, column):
         return self.board[row][column]

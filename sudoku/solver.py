@@ -101,29 +101,26 @@ class Solver(object):
             for c in range(9):
                 cell_value = self.state.board_at(r, c)
 
-                if cell_value in self.state.row_remaining[r]:
+                if cell_value in self.state.get_choices_for_row(r):
                     self.remove_row_possibility(r, cell_value)
 
-                if cell_value in self.state.col_remaining[c]:
+                if cell_value in self.state.get_choices_for_col(c):
                     self.remove_col_possibility(c, cell_value)
 
     def update_row_column_possibilities(self):
+        """
+        Brings the row and column choices into sync with the individual cell possibilites
+        """
         for r in range(9):
-            possible_from_cells = set()
-            # what is possible for the row is the union of what is avaible in every cell
-            for c in range(9):
-                # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
-                if len(self.state.get_possible_for_cell(r, c)) != 1:
-                    possible_from_cells.update(self.state.get_possible_for_cell(r, c))
-            self.state.row_remaining[r] = list(possible_from_cells.intersection(self.state.row_remaining[r]))
+            # what is possible for the row is what is possible in the cells in the row AND possible for row
+            possible_from_cells = self.state.get_remaining_cell_choices_in_row(r)
+            row_choices = self.state.get_choices_for_row(r)
+            self.state.set_choices_for_row(r, list(set(row_choices).intersection(possible_from_cells)))
 
         for c in range(9):
-            possible_from_cells = set()
-            for r in range(9):
-                # If a cell has been solved, skip it. Only interetsted in what is *left* for a row.
-                if len(self.state.get_possible_for_cell(r, c)) != 1:
-                    possible_from_cells.update(self.state.get_possible_for_cell(r, c))
-            self.state.col_remaining[c] = list(possible_from_cells.intersection(self.state.col_remaining[c]))
+            possible_from_cells = self.state.get_remaining_cell_choices_in_col(c)
+            col_choices = self.state.get_choices_for_col(c)
+            self.state.set_choices_for_col(c, list(set(col_choices).intersection(possible_from_cells)))
 
     def update_cell_possibilities(self):
         for r in range(9):
@@ -137,31 +134,31 @@ class Solver(object):
                     self.state.set_cell_possibilities(r, c, [self.state.board_at(r, c)])
 
     def compute_new_cell_possibilities(self, row, column):
-        current_possible = set(self.state.row_remaining[row]).union(self.state.col_remaining[column])
+        current_possible = set(self.state.get_choices_for_row(row)).union(self.state.get_choices_for_col(column))
         old_possible = set(self.state.get_possible_for_cell(row, column))
 
         # apply the updated information but intersect it with the old info so we don't go backward
         self.state.set_cell_possibilities(row, column, list(current_possible.intersection(old_possible)))
 
     def remove_row_possibility(self, row, value):
-        if value in self.state.row_remaining[row]:
-            self.state.row_remaining[row].remove(value)
+        if value in self.state.get_choices_for_row(row):
+            self.state.remove_row_choice(row, value)
 
-            if len(self.state.row_remaining[row]) == 1:
+            if len(self.state.get_choices_for_row(row)) == 1:
                 # We can solve a cell. Find which column it is.
                 for col in range(9):
                     if self.state.board_at(row, col) is None:
-                        self.state.update_board(row, col, self.state.row_remaining[row][0])
+                        self.state.update_board(row, col, self.state.get_choices_for_row(row)[0])
 
     def remove_col_possibility(self, col, value):
-        if value in self.state.col_remaining[col]:
-            self.state.col_remaining[col].remove(value)
+        if value in self.state.get_choices_for_col(col):
+            self.state.remove_col_choice(col, value)
 
-            if len(self.state.col_remaining[col]) == 1:
+            if len(self.state.get_choices_for_col(col)) == 1:
                 # We can solve a cell. Find which row it is.
                 for row in range(9):
                     if not self.state.cell_solved(row, col):
-                        self.state.update_board(row, col, self.state.col_remaining[col][0])
+                        self.state.update_board(row, col, self.state.get_choices_for_col(col)[0])
 
     def attempt_section(self) -> bool:
         changed = False
@@ -213,9 +210,11 @@ class Solver(object):
         changed = False
         for r in range(9):
             for c in range(9):
-                # for each unknown cell
+                # for each unknown cell, intersect the possibilities for that row and column
                 if not self.state.cell_solved(r, c):
-                    intersection = set(self.state.row_remaining[r]).intersection(self.state.col_remaining[c])
+                    row_choices = self.state.get_choices_for_row(r)
+                    col_choices = self.state.get_choices_for_col(c)
+                    intersection = set(row_choices).intersection(col_choices)
                     if len(intersection) == 1:
                         self.state.update_board(r, c, intersection.pop())
                         changed = True
@@ -223,22 +222,22 @@ class Solver(object):
 
     def check_for_single_possibilities(self) -> bool:
         changed = False
-        for r_num, row_vals in enumerate(self.state.row_remaining):
-            # if there is only one possibility for the row, we can fill it in
-            if len(row_vals) == 1:
-                new_val = row_vals[0]
-                unknown_cols = [i for i, v in enumerate(self.state.get_row(r_num)) if v is None]
-                assert(len(unknown_cols) == 1)
-                self.state.update_board(r_num, unknown_cols[0], new_val)
+        for r in range(9):
+            remaining = self.state.get_choices_for_row(r)
+            # if there is only one possibility for the column, we can fill it in on the board
+            if len(remaining) == 1:
+                unknown_cols = [i for i, v in enumerate(self.state.get_row(r)) if v is None]
+                assert (len(unknown_cols) == 1)
+                self.state.update_board(r, unknown_cols[0], remaining[0])
                 changed = True
 
-        for c_num, col_vals in enumerate(self.state.col_remaining):
-            # if there is only one possibility for the column, we can fill it in
-            if len(col_vals) == 1:
-                new_val = col_vals[0]
-                unknown_rows = [row_num for row_num, val in enumerate(self.state.get_column(c_num)) if val is None]
+        for c in range(9):
+            remaining = self.state.get_choices_for_col(c)
+            # if there is only one possibility for the column, we can fill it in on the board
+            if len(remaining) == 1:
+                unknown_rows = [row_num for row_num, val in enumerate(self.state.get_column(c)) if val is None]
                 assert(len(unknown_rows) == 1)
-                self.state.update_board(unknown_rows[0], c_num, new_val)
+                self.state.update_board(unknown_rows[0], c, remaining[0])
                 changed = True
 
         return changed
