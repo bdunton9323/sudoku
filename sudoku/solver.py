@@ -15,14 +15,15 @@ class Solver(object):
         self.solve_recursively(stats, 0)
         stats.stop_timer()
 
-        BoardPrinter(self.state.board).pretty_print()
+        board_printer = BoardPrinter(self.state.board, self.expected_solution)
 
-        if self.state.is_solved():
-            if self.expected_solution:
-                self.state.compare_to_expected(self.expected_solution)
+        if self.state.is_solved() and self.expected_solution and self.state.matches_expected(self.expected_solution):
             self.print_success_stats(stats)
+            board_printer.pretty_print()
         else:
             self.print_failure_stats(stats)
+            if self.expected_solution:
+                board_printer.print_diff()
 
     def solve_recursively(self, stats_tracker, recursion_depth) -> bool:
         stats_tracker.on_recursion(recursion_depth)
@@ -36,8 +37,8 @@ class Solver(object):
         except ConstraintViolationError:
             return False
 
-        for row in range(8):
-            for col in range(8):
+        for row in range(9):
+            for col in range(9):
                 # scan to the first unsolved space
                 if self.state.cell_solved(row, col):
                     continue
@@ -255,23 +256,46 @@ class Solver(object):
 
 
 class BoardPrinter(object):
-    def __init__(self, board: list[list[int]]):
-        self.board = board
+    # ANSI escape sequence for colored text in terminal
+    RED = '\033[91m'
+    END_COLOR = '\033[0m'
+
+    def __init__(self, result_board: list[list[int]], expected_board=None):
+        if expected_board is not None and len(expected_board) != len(result_board):
+            raise ValueError
+        self.actual_board = result_board
+        self.expected_board = expected_board
 
     def pretty_print(self):
-        for i, row in enumerate(self.board):
+        for i, row in enumerate(self.actual_board):
             print(self.format_row(row))
             if (i + 1) % 3 == 0:
                 print(''.join([' ' for _ in range(26)]))
 
-    @staticmethod
-    def format_row(row: list[int]) -> str:
-        characters = []
+    def print_diff(self):
+        for r, row in enumerate(self.actual_board):
+            wrong_indexes = []
+            for c in range(len(self.actual_board[r])):
+                if self.actual_board[r][c] != self.expected_board[r][c]:
+                    wrong_indexes.append(c)
+                    print(f"{r, c} was {self.actual_board[r][c]} but expected {self.expected_board[r][c]}")
+            print(self.format_row(row, wrong_indexes))
+            if (r + 1) % 3 == 0:
+                print(''.join([' ' for _ in range(26)]))
+
+    def format_row(self, row: list[int], wrong_indexes=None) -> str:
+        if wrong_indexes is None:
+            wrong_indexes = []
+
+        cells = []
         for i, v in enumerate(row):
-            if v:
-                characters.append(str(v))
+            cell_value = str(v) if v else '.'
+
+            if i in wrong_indexes:
+                cells.append(self.RED + cell_value + self.END_COLOR)
             else:
-                characters.append('.')
+                cells.append(cell_value)
+
             if (i + 1) % 3 == 0 and i < len(row) - 1:
-                characters.append(' ')
-        return ' '.join(characters)
+                cells.append(' ')
+        return ' '.join(cells)

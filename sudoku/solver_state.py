@@ -126,11 +126,13 @@ class SolverState(object):
 
         return True
 
-    def compare_to_expected(self, expected_solution):
+    def matches_expected(self, expected_solution):
+        matched = True
         for r in range(9):
             for c in range(9):
                 if self.board[r][c] != expected_solution[r][c]:
-                    print(f"{r, c} was {self.board[r][c]} but expected {expected_solution[r][c]}")
+                    return False
+        return matched
 
     def assert_still_valid(self):
         # no two values in the same column:
