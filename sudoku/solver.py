@@ -190,11 +190,10 @@ class Solver(object):
 
         for r in range(start_row, end_row):
             for c in range(start_col, end_col):
-                # anything in the same section is not possible for this cell
-                # TODO: check if cell is unkown before looping over vals
-                for val in values_in_section:
-                    # remove it as a possibility unless this has been solved
-                    if len(self.state.get_choices_for_cell(r, c)) != 1:
+                # remove it as a possibility unless this has been solved
+                if len(self.state.get_choices_for_cell(r, c)) != 1:
+                    # anything in the same section is not possible for this cell
+                    for val in values_in_section:
                         changed = self.state.mark_impossible_in_cell(r, c, val)
                         if len(self.state.get_choices_for_cell(r, c)) == 1:
                             self.state.update_board(r, c, self.state.get_choices_for_cell(r, c)[0])
