@@ -44,7 +44,7 @@ class Solver(object):
 
                 state_before_all_guesses = self.state.copy()
 
-                for guess in self.state.get_possible_for_cell(row, col):
+                for guess in self.state.get_choices_for_cell(row, col):
                     state_before_this_guess = self.state.copy()
 
                     # if this guess was invalid from the start, then move on
@@ -113,12 +113,12 @@ class Solver(object):
         """
         for r in range(9):
             # what is possible for the row is what is possible in the cells in the row AND possible for row
-            possible_from_cells = self.state.get_remaining_cell_choices_in_row(r)
+            possible_from_cells = self.state.get_choices_for_cells_in_row(r)
             row_choices = self.state.get_choices_for_row(r)
             self.state.set_choices_for_row(r, list(set(row_choices).intersection(possible_from_cells)))
 
         for c in range(9):
-            possible_from_cells = self.state.get_remaining_cell_choices_in_col(c)
+            possible_from_cells = self.state.get_choices_for_cells_in_col(c)
             col_choices = self.state.get_choices_for_col(c)
             self.state.set_choices_for_col(c, list(set(col_choices).intersection(possible_from_cells)))
 
@@ -128,21 +128,21 @@ class Solver(object):
                 if self.state.board_at(r, c) is None:
                     self.compute_new_cell_possibilities(r, c)
 
-                    if len(self.state.get_possible_for_cell(r, c)) == 1:
-                        self.state.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
+                    if len(self.state.get_choices_for_cell(r, c)) == 1:
+                        self.state.update_board(r, c, self.state.get_choices_for_cell(r, c)[0])
                 else:
-                    self.state.set_cell_possibilities(r, c, [self.state.board_at(r, c)])
+                    self.state.set_choices_for_cell(r, c, [self.state.board_at(r, c)])
 
     def compute_new_cell_possibilities(self, row, column):
         current_possible = set(self.state.get_choices_for_row(row)).union(self.state.get_choices_for_col(column))
-        old_possible = set(self.state.get_possible_for_cell(row, column))
+        old_possible = set(self.state.get_choices_for_cell(row, column))
 
         # apply the updated information but intersect it with the old info so we don't go backward
-        self.state.set_cell_possibilities(row, column, list(current_possible.intersection(old_possible)))
+        self.state.set_choices_for_cell(row, column, list(current_possible.intersection(old_possible)))
 
     def remove_row_possibility(self, row, value):
         if value in self.state.get_choices_for_row(row):
-            self.state.remove_row_choice(row, value)
+            self.state.mark_impossible_in_row(row, value)
 
             if len(self.state.get_choices_for_row(row)) == 1:
                 # We can solve a cell. Find which column it is.
@@ -152,7 +152,7 @@ class Solver(object):
 
     def remove_col_possibility(self, col, value):
         if value in self.state.get_choices_for_col(col):
-            self.state.remove_col_choice(col, value)
+            self.state.mark_impossible_in_col(col, value)
 
             if len(self.state.get_choices_for_col(col)) == 1:
                 # We can solve a cell. Find which row it is.
@@ -186,17 +186,18 @@ class Solver(object):
         end_row = end_cell[0]
         end_col = end_cell[1]
         changed = False
-        values_in_section = self.state.get_values_in_range((start_row, start_col), (end_row, end_col))
+        values_in_section = self.state.get_unique_values_in_section((start_row, start_col), (end_row, end_col))
 
         for r in range(start_row, end_row):
             for c in range(start_col, end_col):
                 # anything in the same section is not possible for this cell
+                # TODO: check if cell is unkown before looping over vals
                 for val in values_in_section:
                     # remove it as a possibility unless this has been solved
-                    if len(self.state.get_possible_for_cell(r, c)) != 1:
-                        changed = self.state.mark_value_impossible(r, c, val)
-                        if len(self.state.get_possible_for_cell(r, c)) == 1:
-                            self.state.update_board(r, c, self.state.get_possible_for_cell(r, c)[0])
+                    if len(self.state.get_choices_for_cell(r, c)) != 1:
+                        changed = self.state.mark_impossible_in_cell(r, c, val)
+                        if len(self.state.get_choices_for_cell(r, c)) == 1:
+                            self.state.update_board(r, c, self.state.get_choices_for_cell(r, c)[0])
 
         return changed
 

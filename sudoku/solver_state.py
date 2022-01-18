@@ -1,6 +1,5 @@
 from copy import deepcopy
 from exceptions import ConstraintViolationError
-from itertools import chain
 from typing import List
 
 
@@ -29,20 +28,10 @@ class SolverState(object):
         new_state.col_remaining = deepcopy(self.col_remaining)
         return new_state
 
-    def get_possible_for_cell(self, row, column) -> List[int]:
+    def get_choices_for_cell(self, row, column) -> List[int]:
         return self.cell_possible[row][column]
 
-    def mark_value_impossible(self, row, column, to_remove) -> bool:
-        if to_remove in self.cell_possible[row][column]:
-            self.cell_possible[row][column].remove(to_remove)
-            return True
-        else:
-            return False
-
-    def set_cell_possibilities(self, row, column, value: list[int]):
-        self.cell_possible[row][column] = value
-
-    def get_remaining_cell_choices_in_row(self, row) -> set[int]:
+    def get_choices_for_cells_in_row(self, row) -> set[int]:
         # only include unsolved cells because solved ones are no longer available to assign
         # cells with one possibility are known
         # unknowns = filter(lambda c:  len(c) != 1, self.cell_possible[row])
@@ -53,7 +42,7 @@ class SolverState(object):
                 choices.update(self.cell_possible[row][col])
         return choices
 
-    def get_remaining_cell_choices_in_col(self, col: int) -> set[int]:
+    def get_choices_for_cells_in_col(self, col: int) -> set[int]:
         # building a set explicitly is much faster than using itertools.chain(filter()))
         choices = set()
         for row in range(9):
@@ -61,7 +50,7 @@ class SolverState(object):
                 choices.update(self.cell_possible[row][col])
         return choices
 
-    def get_values_in_range(self, start_cell, end_cell):
+    def get_unique_values_in_section(self, start_cell, end_cell):
         # building a set explicitly is much faster than using itertools.chain(filter()))
         values_in_section = []
         for r in range(start_cell[0], end_cell[0]):
@@ -73,28 +62,38 @@ class SolverState(object):
     def get_choices_for_row(self, row):
         return self.row_remaining[row]
 
-    def set_choices_for_row(self, row, new_choices: List[int]):
-        self.row_remaining[row] = new_choices
-
     def get_choices_for_col(self, col):
         return self.col_remaining[col]
+
+    def mark_impossible_in_cell(self, row, column, to_remove) -> bool:
+        if to_remove in self.cell_possible[row][column]:
+            self.cell_possible[row][column].remove(to_remove)
+            return True
+        else:
+            return False
+
+    def mark_impossible_in_row(self, row, value):
+        if value in self.row_remaining[row]:
+            self.row_remaining[row].remove(value)
+
+    def mark_impossible_in_col(self, col, value):
+        if value in self.col_remaining[col]:
+            self.col_remaining[col].remove(value)
+
+    def set_choices_for_cell(self, row, column, value: list[int]):
+        self.cell_possible[row][column] = value
+
+    def set_choices_for_row(self, row, new_choices: List[int]):
+        self.row_remaining[row] = new_choices
 
     def set_choices_for_col(self, col, new_choices: List[int]):
         self.col_remaining[col] = new_choices
 
-    def remove_row_choice(self, row, value):
-        if value in self.row_remaining[row]:
-            self.row_remaining[row].remove(value)
 
-    def remove_col_choice(self, col, value):
-        if value in self.col_remaining[col]:
-            self.col_remaining[col].remove(value)
+
 
     def board_at(self, row, column):
         return self.board[row][column]
-
-    def set_cell(self, row, column, value):
-        self.board[row][column] = value
 
     def cell_solved(self, row: int, column: int) -> bool:
         return self.board[row][column] is not None
@@ -106,12 +105,32 @@ class SolverState(object):
         return [v[col] for v in self.board]
 
     def update_board(self, row, column, value):
-        self.set_cell(row, column, value)
+        self.board[row][column] = value
+
+        # update all derived information
         if value in self.row_remaining:
             self.row_remaining.remove(value)
         if value in self.col_remaining:
             self.col_remaining.remove(value)
-        self.set_cell_possibilities(row, column, [value])
+        self.set_choices_for_cell(row, column, [value])
+
+    def is_solved(self):
+        for row in self.board:
+            for cell in row:
+                if not cell:
+                    return False
+        try:
+            self.assert_still_valid()
+        except ConstraintViolationError:
+            return False
+
+        return True
+
+    def compare_to_expected(self, expected_solution):
+        for r in range(9):
+            for c in range(9):
+                if self.board[r][c] != expected_solution[r][c]:
+                    print(f"{r, c} was {self.board[r][c]} but expected {expected_solution[r][c]}")
 
     def assert_still_valid(self):
         # no two values in the same column:
@@ -157,35 +176,17 @@ class SolverState(object):
                 if self.board[r][c] is not None:
                     nums_in_section.add(self.board[r][c])
 
-    def is_solved(self):
-        for row in self.board:
-            for cell in row:
-                if not cell:
-                    return False
-        try:
-            self.assert_still_valid()
-        except ConstraintViolationError:
-            return False
-
-        return True
-
-    def compare_to_expected(self, expected_solution):
-        for r in range(9):
-            for c in range(9):
-                if self.board[r][c] != expected_solution[r][c]:
-                    print(f"{r, c} was {self.board[r][c]} but expected {expected_solution[r][c]}")
-
     def _assert_internal_consistency(self):
         for r in range(9):
             for c in range(9):
-                assert(self.get_possible_for_cell(r, c) != 0)
+                assert(self.get_choices_for_cell(r, c) != 0)
 
                 # if there are no more possibiliites, yet this cell has not been solved, there is a bug
-                if len(self.get_possible_for_cell(r, c)) == 1:
+                if len(self.get_choices_for_cell(r, c)) == 1:
                     assert(self.board[r][c] is not None)
 
                 if self.board[r][c] is not None:
                     assert(self.board[r][c] not in self.row_remaining)
                     assert(self.board[r][c] not in self.col_remaining)
-                    assert(self.board[r][c] == self.get_possible_for_cell(r, c)[0])
-                    assert(len(self.get_possible_for_cell(r, c)) == 1)
+                    assert(self.board[r][c] == self.get_choices_for_cell(r, c)[0])
+                    assert(len(self.get_choices_for_cell(r, c)) == 1)
